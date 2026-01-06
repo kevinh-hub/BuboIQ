@@ -1,0 +1,166 @@
+╔═══════════════════════════════════════════════════════════════╗
+║                                                               ║
+║   🚀 BuboIQ Phase 5 - DEPLOY NOW - One Page Reference 🚀     ║
+║                                                               ║
+╚═══════════════════════════════════════════════════════════════╝
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🎯 SURGICAL DEPLOYMENT - ONE COMMAND
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+chmod +x SHIP_IT.sh smoke-test.sh && ./SHIP_IT.sh
+
+⏱️  Time: 7-10 minutes
+✅ Includes: Pre-flight checks, deployment, verification
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📋 PREREQUISITES (2 minutes)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. Get Resend API Key (FREE):
+   https://resend.com/api-keys
+
+2. Set Secrets:
+   supabase secrets set RESEND_API_KEY=re_your_key
+   supabase secrets set SALES_EMAIL=sales@buboiq.com
+   supabase secrets set FRONTEND_URL=https://buboiq.com
+
+3. Verify .env:
+   VITE_SUPABASE_URL=https://your-project.supabase.co
+   VITE_SUPABASE_ANON_KEY=your_anon_key
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🧪 VERIFICATION (3 tests - automated)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. Health Endpoint:
+   curl https://YOUR_PROJECT.supabase.co/functions/v1/make-server-55e8c5b2/health
+
+2. Lead Submission:
+   curl -X POST https://YOUR_PROJECT.supabase.co/functions/v1/make-server-55e8c5b2/demo-leads \
+     -H "Content-Type: application/json" \
+     -H "Authorization: Bearer YOUR_ANON_KEY" \
+     -d '{"name":"Test","email":"test@example.com","company":"Test Co"}'
+
+3. Frontend:
+   curl https://buboiq.com | grep "BuboIQ"
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🧪 5-MINUTE SMOKE TEST (manual)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. Go to https://buboiq.com
+2. Click "Start the Live Demo"
+3. Complete all 6 steps
+4. Submit lead form
+5. Check email inbox
+6. Login → Demo Leads → verify entry
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📊 KPI TARGETS (Day 1)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Demo started → Step 3: >70%
+Demo started → Step 5 (KB): >55%
+Demo started → Lead: 5-15%
+Hot lead rate (score ≥80): >40%
+Email delivery: >95%
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🔍 MONITORING
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Function Logs:
+  supabase functions logs make-server --follow
+
+Google Analytics:
+  Check real-time events → "full_journey_demo_started"
+
+Email Delivery:
+  https://resend.com/emails
+
+Admin Panel:
+  Login → Demo Leads
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🔄 ROLLBACK (if needed)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Frontend:
+  vercel rollback
+
+Function:
+  git checkout <prev> supabase/functions/make-server/
+  supabase functions deploy make-server
+
+Time: <5 minutes
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+❌ RED FLAGS (act immediately)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+<50% reach Step 3 → Check Step 2 loading
+<30% reach Step 5 → Check Step 4 execution
+<2% submit leads → Check form validation
+Emails not arriving → Check RESEND_API_KEY
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ SUCCESS CRITERIA
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✅ All 3 verification tests PASS
+✅ 5-minute smoke test PASS
+✅ First test lead captured
+✅ Emails arrive (auto-reply + sales)
+✅ Admin panel accessible
+✅ Function logs clean (no errors)
+
+Status: LIVE AND CAPTURING LEADS 🎉
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📚 DOCUMENTATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Quick Start:
+  SURGICAL_DEPLOYMENT_READY.md
+  DEPLOY_NOW.txt (this file)
+
+Detailed:
+  GO_LIVE_CHECKLIST.md (surgical checklist)
+  KPI_TRACKING_GUIDE.md (monitoring)
+  PHASE_5_COMPLETE.md (technical docs)
+
+Scripts:
+  SHIP_IT.sh (one-command deploy)
+  smoke-test.sh (automated verification)
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🚀 DEPLOY COMMAND
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+chmod +x SHIP_IT.sh && ./SHIP_IT.sh
+
+
+Time to first lead: ~15 minutes
+
+Let's ship it! 🎉
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Last updated: October 22, 2025
+Phase: 5 - Full-Journey Demo Experience
+Status: ✅ READY FOR SURGICAL GO-LIVE
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

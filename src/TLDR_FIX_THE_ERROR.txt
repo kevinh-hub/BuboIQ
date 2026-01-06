@@ -1,0 +1,77 @@
+═══════════════════════════════════════════════════════════════
+  ⚠️  YOU'RE SEEING: "Failed to fetch"
+═══════════════════════════════════════════════════════════════
+
+WHY IT'S FAILING:
+─────────────────
+The backend code exists in your project files but is NOT deployed
+to Supabase Edge Functions yet. The frontend can't reach it.
+
+═══════════════════════════════════════════════════════════════
+  ✅ THE FIX (5 MINUTES)
+═══════════════════════════════════════════════════════════════
+
+Run these commands in your terminal:
+
+1. npm install -g supabase
+
+2. supabase login
+
+3. supabase link --project-ref xwcgpmqgqysxeovbrbxg
+
+4. supabase functions deploy make-server-55e8c5b2
+
+5. supabase secrets set SUPABASE_URL=https://xwcgpmqgqysxeovbrbxg.supabase.co
+
+6. supabase secrets set SUPABASE_SERVICE_ROLE_KEY=<get from dashboard>
+
+   Get your service role key:
+   https://supabase.com/dashboard/project/xwcgpmqgqysxeovbrbxg/settings/api
+
+═══════════════════════════════════════════════════════════════
+  🧪 TEST IT WORKED
+═══════════════════════════════════════════════════════════════
+
+curl https://xwcgpmqgqysxeovbrbxg.supabase.co/functions/v1/make-server-55e8c5b2/health
+
+Should return: {"status":"ok","timestamp":"..."}
+
+═══════════════════════════════════════════════════════════════
+  📋 WHAT WILL BE DEPLOYED
+═══════════════════════════════════════════════════════════════
+
+All 24 backend files from /supabase/functions/make-server-55e8c5b2/:
+  ✅ index.ts (main server)
+  ✅ auth.ts (login logic with Kevin auto-creation)
+  ✅ super-admin-routes.ts (7 endpoints)
+  ✅ kv_store.ts (database)
+  ✅ constants.ts (demo accounts)
+  ✅ early-access.ts
+  ✅ demo-leads.ts
+  ✅ guided-fixes.ts
+  ✅ compliance.ts
+  ✅ devices.ts
+  ✅ tickets.ts
+  ✅ integrations.ts
+  ✅ notifications.ts
+  ✅ ... and 11 more files
+
+═══════════════════════════════════════════════════════════════
+  🎉 AFTER DEPLOYMENT
+═══════════════════════════════════════════════════════════════
+
+1. Refresh your browser
+2. Try logging in again with:
+   Email: kevinh@buboiq.com
+   Password: TestAccount123!
+3. Backend will auto-create your super admin account
+4. You'll be redirected to the Super Admin Dashboard
+
+═══════════════════════════════════════════════════════════════
+
+📖 Full instructions: See /DEPLOY_BACKEND_NOW.md
+
+🔗 Your Supabase project:
+   https://supabase.com/dashboard/project/xwcgpmqgqysxeovbrbxg
+
+═══════════════════════════════════════════════════════════════

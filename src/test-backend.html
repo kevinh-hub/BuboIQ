@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>BuboIQ Backend Test</title>
+    <style>
+        body {
+            font-family: monospace;
+            background: #1a1a2e;
+            color: #00ff88;
+            padding: 20px;
+        }
+        .test {
+            margin: 20px 0;
+            padding: 15px;
+            background: #16213e;
+            border: 1px solid #00ff88;
+            border-radius: 8px;
+        }
+        .test h3 {
+            margin: 0 0 10px 0;
+            color: #00ffff;
+        }
+        .result {
+            background: #0f1419;
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 10px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        .success { color: #00ff88; }
+        .error { color: #ff4444; }
+        button {
+            background: #00ff88;
+            color: #1a1a2e;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-family: monospace;
+            font-weight: bold;
+        }
+        button:hover {
+            background: #00ffff;
+        }
+    </style>
+</head>
+<body>
+    <h1>🦉 BuboIQ Backend Deployment Test</h1>
+    
+    <div class="test">
+        <h3>Test 1: Health Check</h3>
+        <button onclick="testHealth()">Run Test</button>
+        <div id="health-result" class="result"></div>
+    </div>
+
+    <div class="test">
+        <h3>Test 2: CORS Check</h3>
+        <button onclick="testCORS()">Run Test</button>
+        <div id="cors-result" class="result"></div>
+    </div>
+
+    <div class="test">
+        <h3>Test 3: Super Admin Login</h3>
+        <button onclick="testLogin()">Run Test</button>
+        <div id="login-result" class="result"></div>
+    </div>
+
+    <div class="test">
+        <h3>Test 4: Check Environment Variables</h3>
+        <button onclick="testEnvVars()">Run Test</button>
+        <div id="env-result" class="result"></div>
+    </div>
+
+    <script>
+        const PROJECT_ID = 'xwcgpmqgqysxeovbrbxg';
+        const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh3Y2dwbXFncXlzeGVvdmJyYnhnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTkwODM1MjUsImV4cCI6MjA3NDY1OTUyNX0.aiUQaSGnYAD1eWb0U5pdUnxz4mG6FKCfsJenDaAXu_k';
+        const BASE_URL = `https://${PROJECT_ID}.supabase.co/functions/v1/make-server-55e8c5b2`;
+
+        function log(elementId, message, isError = false) {
+            const el = document.getElementById(elementId);
+            const className = isError ? 'error' : 'success';
+            el.innerHTML = `<span class="${className}">${message}</span>`;
+        }
+
+        async function testHealth() {
+            log('health-result', 'Testing... ⏳');
+            try {
+                const url = `${BASE_URL}/health`;
+                console.log('Testing URL:', url);
+                
+                const response = await fetch(url, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${ANON_KEY}`
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    log('health-result', `✅ SUCCESS!\n\nStatus: ${response.status}\nResponse:\n${JSON.stringify(data, null, 2)}`);
+                } else {
+                    log('health-result', `❌ FAILED\n\nStatus: ${response.status}\nResponse:\n${JSON.stringify(data, null, 2)}`, true);
+                }
+            } catch (error) {
+                log('health-result', `❌ NETWORK ERROR\n\n${error.message}\n\nThis means:\n1. Function is not deployed, OR\n2. Environment variables not set, OR\n3. CORS is blocking the request`, true);
+            }
+        }
+
+        async function testCORS() {
+            log('cors-result', 'Testing CORS... ⏳');
+            try {
+                const url = `${BASE_URL}/health`;
+                
+                const response = await fetch(url, {
+                    method: 'OPTIONS',
+                });
+                
+                const corsHeaders = {
+                    'Access-Control-Allow-Origin': response.headers.get('Access-Control-Allow-Origin'),
+                    'Access-Control-Allow-Methods': response.headers.get('Access-Control-Allow-Methods'),
+                    'Access-Control-Allow-Headers': response.headers.get('Access-Control-Allow-Headers'),
+                };
+                
+                log('cors-result', `✅ CORS Headers:\n${JSON.stringify(corsHeaders, null, 2)}`);
+            } catch (error) {
+                log('cors-result', `❌ CORS ERROR\n\n${error.message}`, true);
+            }
+        }
+
+        async function testLogin() {
+            log('login-result', 'Testing login... ⏳');
+            try {
+                const url = `${BASE_URL}/auth/signin`;
+                console.log('Testing URL:', url);
+                
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${ANON_KEY}`
+                    },
+                    body: JSON.stringify({
+                        email: 'kevinh@buboiq.com',
+                        password: 'TestAccount123!'
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    log('login-result', `✅ LOGIN SUCCESS!\n\nUser: ${data.user.name}\nEmail: ${data.user.email}\nRole: ${data.user.role}\nToken: ${data.token.substring(0, 30)}...`);
+                } else {
+                    log('login-result', `❌ LOGIN FAILED\n\nStatus: ${response.status}\nResponse:\n${JSON.stringify(data, null, 2)}`, true);
+                }
+            } catch (error) {
+                log('login-result', `❌ NETWORK ERROR\n\n${error.message}\n\nPossible causes:\n1. Function not deployed\n2. SUPABASE_SERVICE_ROLE_KEY not set\n3. SUPABASE_URL not set`, true);
+            }
+        }
+
+        async function testEnvVars() {
+            log('env-result', 'Checking required environment variables...\n\nNote: We can\'t directly check server env vars from the client,\nbut we can infer from the responses.\n\nRun these commands in your terminal:\n\n$ supabase secrets list --project-ref xwcgpmqgqysxeovbrbxg\n\nRequired secrets:\n- SUPABASE_URL\n- SUPABASE_SERVICE_ROLE_KEY\n- SUPABASE_ANON_KEY (optional)\n- RESEND_API_KEY (optional, for emails)');
+        }
+
+        // Auto-run tests on load
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                console.log('Auto-running tests...');
+                testHealth();
+            }, 500);
+        });
+    </script>
+</body>
+</html>

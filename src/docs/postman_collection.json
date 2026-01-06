@@ -1,0 +1,400 @@
+{
+  "info": {
+    "name": "BuboIQ Back Office API",
+    "description": "Production API collection for BuboIQ Super Admin Console. All endpoints require super_admin JWT token.\n\n**Setup:**\n1. Set `{{baseUrl}}` to your Supabase project URL\n2. Set `{{adminToken}}` to your super admin JWT (get from Auth.getSession() after signing in)\n3. Run requests to test admin operations\n\n**Security:** All operations are audited. Check Compliance tab after running mutations.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "https://YOUR-PROJECT-ID.supabase.co",
+      "type": "string"
+    },
+    {
+      "key": "adminToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "testOrgId",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Organizations",
+      "item": [
+        {
+          "name": "Get All Organizations",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/functions/v1/make-server-55e8c5b2/admin/orgs",
+              "host": ["{{baseUrl}}"],
+              "path": ["functions", "v1", "make-server-55e8c5b2", "admin", "orgs"]
+            },
+            "description": "Fetch all organizations with billing status, health, and trial info.\n\n**Returns:** Empty array if no orgs exist (no mock data).\n\n**Response:**\n```json\n{\n  \"data\": [\n    {\n      \"id\": \"uuid\",\n      \"name\": \"Acme Corp\",\n      \"tier\": \"Pro\",\n      \"status\": \"active\",\n      \"seats\": 10,\n      \"created_at\": \"2024-01-01T00:00:00Z\",\n      \"last_active_at\": \"2024-01-15T10:30:00Z\",\n      \"stripe_customer_id\": \"cus_xxx\",\n      \"trial_ends_at\": null\n    }\n  ]\n}\n```"
+          }
+        },
+        {
+          "name": "Change Organization Tier",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tier\": \"Pro\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/functions/v1/make-server-55e8c5b2/admin/orgs/{{testOrgId}}/tier",
+              "host": ["{{baseUrl}}"],
+              "path": ["functions", "v1", "make-server-55e8c5b2", "admin", "orgs", "{{testOrgId}}", "tier"]
+            },
+            "description": "Change organization tier. Creates audit log entry.\n\n**Body:**\n```json\n{\n  \"tier\": \"Starter\" | \"Growth\" | \"Pro\" | \"Enterprise\"\n}\n```\n\n**Success Response:**\n```json\n{\n  \"success\": true,\n  \"message\": \"Tier changed from Starter to Pro\"\n}\n```\n\n**Audit:** Check Compliance tab after running."
+          }
+        },
+        {
+          "name": "Extend Trial Period",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"days\": 14\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/functions/v1/make-server-55e8c5b2/admin/orgs/{{testOrgId}}/extend-trial",
+              "host": ["{{baseUrl}}"],
+              "path": ["functions", "v1", "make-server-55e8c5b2", "admin", "orgs", "{{testOrgId}}", "extend-trial"]
+            },
+            "description": "Extend trial period by specified days.\n\n**Body:**\n```json\n{\n  \"days\": 7 | 14 | 30 | <any positive integer>\n}\n```\n\n**Success Response:**\n```json\n{\n  \"success\": true,\n  \"new_trial_end\": \"2024-02-15T00:00:00Z\",\n  \"message\": \"Trial extended by 14 days\"\n}\n```\n\n**Error if no finance record:**\n```json\n{\n  \"error\": \"No billing record found for this organization\",\n  \"hint\": \"Ensure Stripe webhook has created finance_ops entry\"\n}\n```"
+          }
+        },
+        {
+          "name": "Disable Organization",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/functions/v1/make-server-55e8c5b2/admin/orgs/{{testOrgId}}/disable",
+              "host": ["{{baseUrl}}"],
+              "path": ["functions", "v1", "make-server-55e8c5b2", "admin", "orgs", "{{testOrgId}}", "disable"]
+            },
+            "description": "Disable organization (soft delete). Users cannot sign in.\n\n**Success Response:**\n```json\n{\n  \"success\": true,\n  \"message\": \"Organization Acme Corp has been disabled\"\n}\n```\n\n**To re-enable:** Run SQL: `UPDATE companies SET settings = jsonb_set(settings, '{suspended}', 'false') WHERE id = 'org-id';`"
+          }
+        },
+        {
+          "name": "Impersonate Organization",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"org_id\": \"{{testOrgId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/functions/v1/make-server-55e8c5b2/admin/impersonate",
+              "host": ["{{baseUrl}}"],
+              "path": ["functions", "v1", "make-server-55e8c5b2", "admin", "impersonate"]
+            },
+            "description": "Generate short-lived impersonation token (5 minutes).\n\n**Success Response:**\n```json\n{\n  \"token\": \"impersonate_xxx\",\n  \"org_id\": \"uuid\",\n  \"org_name\": \"Acme Corp\",\n  \"expires_in\": 300\n}\n```\n\n**Usage:** Store token in sessionStorage and reload page to impersonate."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Billing",
+      "item": [
+        {
+          "name": "Get Billing Overview",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/functions/v1/make-server-55e8c5b2/admin/billing",
+              "host": ["{{baseUrl}}"],
+              "path": ["functions", "v1", "make-server-55e8c5b2", "admin", "billing"]
+            },
+            "description": "Get real-time billing metrics.\n\n**Response:**\n```json\n{\n  \"data\": {\n    \"mrr\": 125000,\n    \"failed_payments\": 3,\n    \"trials_expiring\": 12,\n    \"invoices\": []\n  },\n  \"message\": \"Connect Stripe webhook to see invoice details\"\n}\n```\n\n**MRR Calculation:** Sum of `finance_ops.mrr_cents` where `status = 'active'`"
+          }
+        },
+        {
+          "name": "Retry Failed Payment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/functions/v1/make-server-55e8c5b2/admin/billing/inv_xxx/retry",
+              "host": ["{{baseUrl}}"],
+              "path": ["functions", "v1", "make-server-55e8c5b2", "admin", "billing", "inv_xxx", "retry"]
+            },
+            "description": "Retry failed payment via Stripe API.\n\n**Success Response:**\n```json\n{\n  \"success\": true,\n  \"message\": \"Payment retry initiated. Check Stripe dashboard for status.\",\n  \"hint\": \"Implement Stripe API call to enable real payment retry\"\n}\n```\n\n**Note:** Requires Stripe API integration (currently returns stub response)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Analytics",
+      "item": [
+        {
+          "name": "Get Platform Analytics",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/functions/v1/make-server-55e8c5b2/admin/analytics",
+              "host": ["{{baseUrl}}"],
+              "path": ["functions", "v1", "make-server-55e8c5b2", "admin", "analytics"]
+            },
+            "description": "Get platform-wide usage metrics from materialized view.\n\n**Response:**\n```json\n{\n  \"data\": {\n    \"active_orgs\": 42,\n    \"issues_opened\": 156,\n    \"guided_fix_rate\": 67,\n    \"avg_response_time\": 15,\n    \"top_orgs\": [\n      {\n        \"org_name\": \"Acme Corp\",\n        \"issues_opened\": 45,\n        \"guided_fixes_completed\": 32,\n        \"completion_rate\": 71\n      }\n    ]\n  }\n}\n```\n\n**Empty State:**\n```json\n{\n  \"data\": {\n    \"active_orgs\": 0,\n    \"issues_opened\": 0,\n    \"guided_fix_rate\": 0,\n    \"avg_response_time\": 0,\n    \"top_orgs\": []\n  },\n  \"message\": \"No usage data yet. Analytics will populate as tickets are created.\"\n}\n```"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Support",
+      "item": [
+        {
+          "name": "Get Support Tickets",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/functions/v1/make-server-55e8c5b2/admin/support",
+              "host": ["{{baseUrl}}"],
+              "path": ["functions", "v1", "make-server-55e8c5b2", "admin", "support"]
+            },
+            "description": "Get open support tickets across all orgs.\n\n**Response:**\n```json\n{\n  \"data\": [\n    {\n      \"id\": \"uuid\",\n      \"org_name\": \"Acme Corp\",\n      \"title\": \"Unable to connect to remote session\",\n      \"status\": \"open\",\n      \"source\": \"in-app\",\n      \"created_at\": \"2024-01-15T10:00:00Z\",\n      \"streak_box_url\": \"https://app.streak.com/...\"\n    }\n  ]\n}\n```\n\n**Empty State:**\n```json\n{\n  \"data\": [],\n  \"message\": \"No open support tickets. New requests will appear here.\"\n}\n```"
+          }
+        },
+        {
+          "name": "Add Note to Ticket",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"note\": \"Resolved via email. User confirmed working.\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/functions/v1/make-server-55e8c5b2/admin/support/ticket-uuid/note",
+              "host": ["{{baseUrl}}"],
+              "path": ["functions", "v1", "make-server-55e8c5b2", "admin", "support", "ticket-uuid", "note"]
+            },
+            "description": "Add internal note to support ticket.\n\n**Body:**\n```json\n{\n  \"note\": \"<string 1-2000 chars>\"\n}\n```\n\n**Success Response:**\n```json\n{\n  \"success\": true,\n  \"message\": \"Note added to ticket\"\n}\n```\n\n**Audit:** Creates audit log entry."
+          }
+        }
+      ]
+    },
+    {
+      "name": "System",
+      "item": [
+        {
+          "name": "Get System Health",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/functions/v1/make-server-55e8c5b2/admin/system",
+              "host": ["{{baseUrl}}"],
+              "path": ["functions", "v1", "make-server-55e8c5b2", "admin", "system"]
+            },
+            "description": "Get feature flags, job health, DB latency.\n\n**Response:**\n```json\n{\n  \"data\": {\n    \"feature_flags\": [\n      {\n        \"id\": \"uuid\",\n        \"key\": \"coming_soon_mode\",\n        \"enabled\": false,\n        \"rollout_percent\": 0\n      }\n    ],\n    \"jobs\": [\n      {\n        \"name\": \"Daily Analytics Refresh\",\n        \"last_run_at\": \"2024-01-15T08:00:00Z\",\n        \"status\": \"success\"\n      }\n    ],\n    \"db_latency\": 45,\n    \"webhook_health\": \"ok\"\n  }\n}\n```"
+          }
+        },
+        {
+          "name": "Update Feature Flag",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"enabled\": true,\n  \"rollout_percent\": 50\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/functions/v1/make-server-55e8c5b2/admin/system/flags/flag-uuid",
+              "host": ["{{baseUrl}}"],
+              "path": ["functions", "v1", "make-server-55e8c5b2", "admin", "system", "flags", "flag-uuid"]
+            },
+            "description": "Enable/disable feature flag or set rollout percentage.\n\n**Body (optional fields):**\n```json\n{\n  \"enabled\": true | false,\n  \"rollout_percent\": 0-100\n}\n```\n\n**Success Response:**\n```json\n{\n  \"success\": true,\n  \"message\": \"Feature flag coming_soon_mode updated\"\n}\n```\n\n**Audit:** Creates audit log entry."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Compliance",
+      "item": [
+        {
+          "name": "Get Audit Logs",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/functions/v1/make-server-55e8c5b2/admin/compliance/audit-logs",
+              "host": ["{{baseUrl}}"],
+              "path": ["functions", "v1", "make-server-55e8c5b2", "admin", "compliance", "audit-logs"]
+            },
+            "description": "Get recent audit log entries (last 100).\n\n**Response:**\n```json\n{\n  \"data\": [\n    {\n      \"id\": \"uuid\",\n      \"action\": \"change_tier\",\n      \"actor_email\": \"admin@buboiq.com\",\n      \"target_org\": \"org-uuid\",\n      \"timestamp\": \"2024-01-15T10:30:00Z\",\n      \"details\": {\n        \"before\": {\"tier\": \"Starter\"},\n        \"after\": {\"tier\": \"Pro\"}\n      }\n    }\n  ]\n}\n```\n\n**Empty State:**\n```json\n{\n  \"data\": [],\n  \"message\": \"No audit logs yet. Admin actions will be logged here.\"\n}\n```"
+          }
+        },
+        {
+          "name": "Generate Compliance Evidence (CSV)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"audit_log\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/functions/v1/make-server-55e8c5b2/admin/compliance/evidence",
+              "host": ["{{baseUrl}}"],
+              "path": ["functions", "v1", "make-server-55e8c5b2", "admin", "compliance", "evidence"]
+            },
+            "description": "Generate compliance evidence CSV from audit logs.\n\n**Body:**\n```json\n{\n  \"type\": \"audit_log\" | \"access_review\" | \"admin_actions\"\n}\n```\n\n**Success Response:** CSV file download\n```\nTimestamp,Action,Actor Email,Target Org ID\n2024-01-15T10:30:00Z,change_tier,admin@buboiq.com,org-123\n```\n\n**Error if no audit data:**\n```json\n{\n  \"error\": \"No audit data available for evidence export\",\n  \"hint\": \"Perform admin actions to generate audit trail\"\n}\n```\n\n**Audit:** Creates audit log entry for evidence generation."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Health Check",
+      "item": [
+        {
+          "name": "Server Health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/functions/v1/make-server-55e8c5b2/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["functions", "v1", "make-server-55e8c5b2", "health"]
+            },
+            "description": "Check server health (no auth required).\n\n**Response:**\n```json\n{\n  \"status\": \"ok\",\n  \"timestamp\": \"2024-01-15T10:30:00Z\",\n  \"version\": \"2.0.0\",\n  \"services\": {\n    \"database\": \"ok\",\n    \"email\": \"warning\",\n    \"storage\": \"ok\"\n  },\n  \"initialized\": true\n}\n```"
+          }
+        }
+      ]
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{adminToken}}",
+        "type": "string"
+      }
+    ]
+  }
+}
