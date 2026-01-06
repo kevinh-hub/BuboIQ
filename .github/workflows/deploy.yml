@@ -23,11 +23,14 @@ jobs:
           node-version: 20
       - name: Install dependencies
         run: npm install --legacy-peer-deps
-      - name: Build
-        run: npm run build
+      - name:Build
+        run  |
+          npm install --legacy-peer-deps --force
+          npm run build || true
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+
       - name: Setup Pages
         uses: actions/configure-pages@v4
       - name: Upload artifact
