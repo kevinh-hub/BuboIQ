@@ -2,8 +2,7 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -23,6 +22,11 @@ jobs:
         with:
           node-version: 20
 
+      - name: Fix Case Sensitivity
+        run: |
+          if [ -d "src/Components" ]; then mv src/Components src/components; fi
+          if [ -d "src/components/UI" ]; then mv src/components/UI src/components/ui; fi
+
       - name: Install dependencies
         run: npm install --legacy-peer-deps --force
 
@@ -31,9 +35,6 @@ jobs:
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
-
-      - name: Setup Pages
-        uses: actions/configure-pages@v4
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
