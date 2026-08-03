@@ -339,7 +339,7 @@ function AppContent() {
   };
 
   // Show loading state while auth is initializing
-  if (loading) {
+  if (loading && !user) {
     return (
       <div className="min-h-screen bg-dark-midnight bubo-neural-bg flex items-center justify-center">
         <FontLoader />

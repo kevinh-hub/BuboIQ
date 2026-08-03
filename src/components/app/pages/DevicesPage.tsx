@@ -66,7 +66,7 @@ interface Device {
   tags?: string[];
   is_online: boolean;
   health_score: number;
-  last_seen_at: string;
+  last_seen: string;
   created_at: string;
   updated_at: string;
   risk_level: 'low' | 'medium' | 'high' | 'critical';
@@ -128,7 +128,7 @@ export const DevicesPage: React.FC<DevicesPageProps> = ({
       mac_address: device.mac_address,
       serial_number: device.metadata?.serial_number,
       health_score: device.health_score,
-      is_online: device.is_online
+      is_online: device.status === 'online'
     };
     
     onCreateTicketFromDevice(deviceContext);
@@ -215,7 +215,9 @@ export const DevicesPage: React.FC<DevicesPageProps> = ({
   };
 
   const getLastSeenText = (lastSeen: string) => {
+    if (!lastSeen) return 'Never';
     const date = new Date(lastSeen);
+    if (isNaN(date.getTime())) return 'Unknown';
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();
     const diffMins = Math.floor(diffMs / (1000 * 60));
@@ -584,7 +586,7 @@ export const DevicesPage: React.FC<DevicesPageProps> = ({
                       <div className="flex items-center space-x-2">
                         <Clock className="w-3 h-3 text-mist-gray" />
                         <span className="text-sm text-mist-gray">
-                          {getLastSeenText(device.last_seen_at)}
+                          {getLastSeenText(device.last_seen)}
                         </span>
                       </div>
                     </TableCell>

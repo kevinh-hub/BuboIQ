@@ -73,6 +73,54 @@ export const DeviceDetailPage: React.FC<DeviceDetailPageProps> = ({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState('overview');
+  const [commands, setCommands] = useState<any[]>([]);
+  const [commandLoading, setCommandLoading] = useState(false);
+
+  const loadCommands = async (id: string) => {
+    try {
+      const result = await devicesApi.getCommands(id);
+      setCommands(result.commands || []);
+    } catch (e) {
+      console.error('Failed to load commands', e);
+    }
+  };
+
+  const handleQueueUpdate = async () => {
+    if (!device?.id) return;
+    setCommandLoading(true);
+    try {
+      await devicesApi.queueCommand(device.id, 'install_updates');
+      await loadCommands(device.id);
+    } catch (e) {
+      console.error('Failed to queue update', e);
+    } finally {
+      setCommandLoading(false);
+    }
+  };
+
+  const handleApproveCommand = async (commandId: string) => {
+    try {
+      await devicesApi.approveCommand(commandId);
+      if (device?.id) await loadCommands(device.id);
+    } catch (e) {
+      console.error('Failed to approve command', e);
+    }
+  };
+
+  const handleRejectCommand = async (commandId: string) => {
+    try {
+      await devicesApi.rejectCommand(commandId);
+      if (device?.id) await loadCommands(device.id);
+    } catch (e) {
+      console.error('Failed to reject command', e);
+    }
+  };
+
+  useEffect(() => {
+    if (device?.id) {
+      loadCommands(device.id);
+    }
+  }, [device?.id]);
 
   useEffect(() => {
     loadDeviceData();
@@ -146,7 +194,9 @@ export const DeviceDetailPage: React.FC<DeviceDetailPageProps> = ({
   };
 
   const getLastSeenText = (lastSeen: string) => {
+    if (!lastSeen) return 'Never';
     const date = new Date(lastSeen);
+    if (isNaN(date.getTime())) return 'Unknown';
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();
     const diffMins = Math.floor(diffMs / (1000 * 60));
@@ -298,7 +348,7 @@ export const DeviceDetailPage: React.FC<DeviceDetailPageProps> = ({
             </div>
             <div>
               <div className="text-xl font-bold text-white">
-                {getLastSeenText(device.last_seen_at)}
+                {getLastSeenText(device.last_seen)}
               </div>
               <div className="text-xs text-mist-gray">Last Seen</div>
             </div>
@@ -473,7 +523,7 @@ export const DeviceDetailPage: React.FC<DeviceDetailPageProps> = ({
                     <div className="flex items-center justify-between">
                       <span className="text-sm text-mist-gray">Last Check-in</span>
                       <span className="text-sm text-white">
-                        {getLastSeenText(device.last_seen_at)}
+                        {getLastSeenText(device.last_seen)}
                       </span>
                     </div>
                     
@@ -523,7 +573,50 @@ export const DeviceDetailPage: React.FC<DeviceDetailPageProps> = ({
                     <Download className="w-4 h-4 mr-2" />
                     Export Data
                   </Button>
+
+                  <Button 
+                    variant="ghost" 
+                    className="w-full text-mist-gray hover:text-white hover:bg-slate-gray/30"
+                    onClick={handleQueueUpdate}
+                    disabled={commandLoading}
+                  >
+                    <Zap className="w-4 h-4 mr-2" />
+                    {commandLoading ? 'Queuing...' : 'Install Updates'}
+                  </Button>
                 </div>
+
+                {commands.filter((cmd: any) => cmd.approval_status === 'pending').length > 0 && (
+                  <div className="mt-4 pt-4 border-t border-slate-gray/30 space-y-3">
+                    <h4 className="text-sm font-semibold text-white">Pending Approval</h4>
+                    {commands
+                      .filter((cmd: any) => cmd.approval_status === 'pending')
+                      .map((cmd: any) => (
+                        <div key={cmd.id} className="bg-nocturne-indigo/40 rounded-lg p-3 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm text-white capitalize">{cmd.command_type.replace('_', ' ')}</span>
+                            <Badge className="bg-amber-500/20 text-amber-400 border-amber-500/30">Pending</Badge>
+                          </div>
+                          <div className="flex space-x-2">
+                            <Button
+                              size="sm"
+                              className="flex-1 bubo-btn-neon-primary"
+                              onClick={() => handleApproveCommand(cmd.id)}
+                            >
+                              Approve
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="flex-1 text-mist-gray hover:text-white hover:bg-slate-gray/30"
+                              onClick={() => handleRejectCommand(cmd.id)}
+                            >
+                              Reject
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                )}
               </Card>
             </div>
           </div>

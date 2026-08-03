@@ -550,6 +550,30 @@ export const devicesApi = {
       method: 'POST',
       body: JSON.stringify({ health_score: healthScore }),
     });
+  },
+
+  queueCommand: async (id: string, commandType: string, payload?: Record<string, any>) => {
+    return apiCall(`/devices/${id}/commands`, {
+      method: 'POST',
+      body: JSON.stringify({ command_type: commandType, command_payload: payload || {} }),
+    });
+  },
+
+  getCommands: async (id: string) => {
+    return apiCall(`/devices/${id}/commands`);
+  },
+
+  approveCommand: async (commandId: string) => {
+    return apiCall(`/commands/${commandId}/approve`, {
+      method: 'POST',
+    });
+  },
+
+  rejectCommand: async (commandId: string, reason?: string) => {
+    return apiCall(`/commands/${commandId}/reject`, {
+      method: 'POST',
+      body: JSON.stringify({ reason: reason || null }),
+    });
   }
 };
 

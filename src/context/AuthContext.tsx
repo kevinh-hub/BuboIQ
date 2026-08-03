@@ -188,7 +188,8 @@ export const AuthProvider = ({ children }) => {
   // RESTORE SESSION
   useEffect(() => {
     const initSession = async () => {
-      setLoading(true);
+      const alreadyInit = sessionStorage.getItem('buboiq_auth_init');
+      if (!alreadyInit) setLoading(true);
       try {
         // 1. Get current session
         const { data: { session }, error } = await supabase.auth.getSession();
@@ -207,6 +208,7 @@ export const AuthProvider = ({ children }) => {
         console.error('[AuthContext] Unexpected error restoring session:', err);
       } finally {
         setLoading(false);
+        sessionStorage.setItem('buboiq_auth_init', '1');
       }
     };
 
