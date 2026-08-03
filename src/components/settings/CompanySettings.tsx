@@ -7,7 +7,7 @@ import { Building, Save } from 'lucide-react';
 import { CompanySettings as CompanySettingsType } from './types';
 import { validateCompanySettings, ValidationError } from './validation';
 import FileUpload from './FileUpload';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 
 interface CompanySettingsProps {
   settings: CompanySettingsType;

@@ -11,7 +11,7 @@ import { Switch } from './ui/switch';
 import { useApp } from '../App';
 import Sidebar from './Sidebar';
 import { UserPlus, Mail, MoreHorizontal, Shield, Users as UsersIcon } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 
 export default function TeamManagement() {
   const { users } = useApp();

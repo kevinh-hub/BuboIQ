@@ -1,980 +1,758 @@
-/**
- * BuboIQ Make Server - Main Backend API
- * Handles all backend operations including agent management, auth, devices, tickets, etc.
- */
+import { Hono } from "npm:hono";
+import { cors } from "npm:hono/cors";
+import { logger } from "npm:hono/logger";
+import Anthropic from "npm:@anthropic-ai/sdk";
+import { createClient } from "jsr:@supabase/supabase-js@2.49.8";
+import * as kv from "./kv_store.tsx";
+const app = new Hono();
 
-import { Hono } from 'npm:hono'
-import { cors } from 'npm:hono/cors'
-import { logger } from 'npm:hono/logger'
-import { createClient } from 'jsr:@supabase/supabase-js@2'
-import * as kv from '../server/kv_store.tsx'
+// Enable logger
+app.use('*', logger(console.log));
 
-const app = new Hono()
+// Enable CORS for all routes and methods
+app.use(
+  "/*",
+  cors({
+    origin: "*",
+    allowHeaders: ["Content-Type", "Authorization", "apikey"],
+    allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    exposeHeaders: ["Content-Length"],
+    maxAge: 600,
+  }),
+);
 
-// Middleware
-app.use('*', cors({
-  origin: '*',
-  allowHeaders: ['Content-Type', 'Authorization'],
-  allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-  credentials: true,
-}))
+// Health check endpoint
+app.get("/make-server-55e8c5b2/health", (c) => {
+  return c.json({ status: "ok" });
+});
 
-app.use('*', logger(console.log))
-
-// Log all incoming requests for debugging
-app.use('*', async (c, next) => {
-  console.log(`[${new Date().toISOString()}] ${c.req.method} ${c.req.url} - Path: ${c.req.path}`)
-  await next()
-})
-
-// Create Supabase client
-const supabase = createClient(
-  Deno.env.get('SUPABASE_URL') ?? '',
-  Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-)
-
-// ============================================================================
-// HELPER FUNCTIONS
-// ============================================================================
-
-const getAuthUser = async (authHeader: string | undefined) => {
-  if (!authHeader?.startsWith('Bearer ')) {
-    return { error: 'Missing or invalid authorization header', user: null }
-  }
-
-  const token = authHeader.replace('Bearer ', '')
-  
+// Generate KB Article from a resolved or analyzed ticket
+app.post("/make-server-55e8c5b2/ai/kb-generate", async (c) => {
   try {
-    const { data: { user }, error } = await supabase.auth.getUser(token)
-    
-    if (error || !user) {
-      return { error: 'Invalid token', user: null }
+    // Auth check
+    const token = c.req.header("Authorization")?.replace("Bearer ", "");
+    if (!token) return c.json({ error: "Unauthorized" }, 401);
+
+    const supabaseClient = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    );
+    const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token);
+    if (authError || !user) return c.json({ error: "Unauthorized" }, 401);
+
+    const body = await c.req.json();
+    const { ticket_id, title, description, suggested_fix } = body;
+
+    if (!ticket_id || !title) {
+      return c.json({ error: "ticket_id and title are required" }, 400);
     }
 
-    return { user, error: null }
-  } catch (error) {
-    return { error: error.message, user: null }
-  }
-}
+    // Generate article content via Claude
+    const anthropic = new Anthropic({ apiKey: Deno.env.get("ANTHROPIC_API_KEY") });
 
-const getUserMetadata = (user: any) => {
-  return {
-    id: user.id,
-    email: user.email,
-    name: user.user_metadata?.name || user.email?.split('@')[0] || 'User',
-    role: user.user_metadata?.role || user.app_metadata?.role || 'tech',
-    db_role: user.app_metadata?.db_role || user.user_metadata?.db_role,
-    tier: user.user_metadata?.tier || user.app_metadata?.tier || 'team',
-    org_id: user.user_metadata?.org_id || user.app_metadata?.org_id || user.id,
-    company_name: user.user_metadata?.company_name || 'My Company',
-  }
-}
+    const prompt = [
+      "You are a technical knowledge base writer for an IT support platform.",
+      "Generate a structured KB article for the following support ticket.",
+      "",
+      `Title: ${title}`,
+      description ? `Description: ${description}` : "",
+      suggested_fix ? `Suggested Fix: ${suggested_fix}` : "",
+      "",
+      "Return ONLY a JSON object with these exact keys:",
+      '{ "title": string, "summary": string, "issue": string, "root_cause": string, "solution": string, "prevention": string, "tags": string[] }',
+    ].filter(Boolean).join("\n");
 
-// ============================================================================
-// ROUTES - /make-server-55e8c5b2/*
-// ============================================================================
+    const message = await anthropic.messages.create({
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 1024,
+      messages: [{ role: "user", content: prompt }],
+    });
 
-// Health check
-app.get('/health', (c) => {
-  return c.json({ 
-    status: 'ok', 
-    timestamp: new Date().toISOString(),
-    service: 'buboiq-make-server'
-  })
-})
-
-// ============================================================================
-// AGENT ENDPOINTS
-// ============================================================================
-
-// Register new agent
-app.post('/agents/register', async (c) => {
-  try {
-    const { error: authError, user } = await getAuthUser(c.req.header('Authorization'))
-    if (authError || !user) {
-      return c.json({ error: authError || 'Unauthorized' }, 401)
-    }
-
-    const userData = getUserMetadata(user)
-    const body = await c.req.json()
-    
-    const agentData = {
-      id: body.agent_id || crypto.randomUUID(),
-      hostname: body.hostname,
-      platform: body.platform, // windows, macos, linux
-      platform_version: body.platform_version,
-      agent_version: body.agent_version || '1.0.0',
-      org_id: userData.org_id,
-      ip_address: body.ip_address,
-      mac_address: body.mac_address,
-      capabilities: body.capabilities || [],
-      status: 'active',
-      registered_at: new Date().toISOString(),
-      last_checkin: new Date().toISOString(),
-      metadata: body.metadata || {}
-    }
-
-    // Store agent registration
-    await kv.set(`agent:${agentData.id}`, agentData)
-    await kv.set(`agent:org:${userData.org_id}:${agentData.id}`, agentData.id)
-
-    console.log(`Agent registered: ${agentData.id} for org ${userData.org_id}`)
-
-    return c.json({
-      success: true,
-      agent: agentData,
-      config: {
-        checkin_interval: 300, // 5 minutes
-        posture_check_interval: 600, // 10 minutes
-        enable_auto_update: true,
-        enable_posture_monitoring: true,
+    let articleData: Record<string, any> = {};
+    const content = message.content[0];
+    if (content.type === "text") {
+      try {
+        const match = content.text.match(/\{[\s\S]*\}/);
+        articleData = JSON.parse(match ? match[0] : content.text);
+      } catch {
+        articleData = {
+          title,
+          summary: `Resolution for: ${title}`,
+          issue: description || "",
+          root_cause: "",
+          solution: suggested_fix || "",
+          prevention: "",
+          tags: [],
+        };
       }
-    })
-  } catch (error) {
-    console.error('Agent registration error:', error)
-    return c.json({ error: 'Failed to register agent', details: error.message }, 500)
+    }
+
+    // Persist article to KV
+    const articleId = crypto.randomUUID();
+    const now = new Date().toISOString();
+    const article = {
+      id: articleId,
+      ticket_id,
+      title: articleData.title || title,
+      summary: articleData.summary || "",
+      issue: articleData.issue || description || "",
+      root_cause: articleData.root_cause || "",
+      solution: articleData.solution || suggested_fix || "",
+      prevention: articleData.prevention || "",
+      tags: Array.isArray(articleData.tags) ? articleData.tags : [],
+      created_at: now,
+      updated_at: now,
+    };
+
+    await kv.set(`kb_article:${articleId}`, article);
+
+    console.log(`[KB Generate] Created article ${articleId} for ticket ${ticket_id}`);
+    return c.json({ success: true, article_id: articleId, article });
+  } catch (err: any) {
+    console.log("[KB Generate] Error:", err.message);
+    return c.json({ error: err.message || "Failed to generate KB article" }, 500);
   }
-})
+});
 
-// Agent check-in (heartbeat)
-app.post('/agents/:agentId/checkin', async (c) => {
+// POST /remote/request-consent — auth required; inserts into remote_sessions and sends consent email
+app.post("/make-server-55e8c5b2/remote/request-consent", async (c) => {
   try {
-    const agentId = c.req.param('agentId')
-    const body = await c.req.json()
+    const authHeader = c.req.header("Authorization")?.replace("Bearer ", "");
+    if (!authHeader) return c.json({ error: "Unauthorized" }, 401);
 
-    // Get existing agent
-    const agent = await kv.get(`agent:${agentId}`)
-    if (!agent) {
-      return c.json({ error: 'Agent not found' }, 404)
+    const supabaseClient = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    );
+    const { data: { user }, error: authError } = await supabaseClient.auth.getUser(authHeader);
+    if (authError || !user) return c.json({ error: "Unauthorized" }, 401);
+
+    const body = await c.req.json();
+    const { device_id, organization_id, ticket_id, end_user_email, device_name, technician_name } = body;
+
+    if (!device_id) return c.json({ error: "device_id is required" }, 400);
+
+    const consent_token = crypto.randomUUID();
+
+    const { data: session, error: insertError } = await supabaseClient
+      .from("remote_sessions")
+      .insert({
+        organization_id: organization_id || null,
+        device_id,
+        initiated_by: user.id,
+        status: "pending_consent",
+        consent_token,
+        consent_status: "pending",
+        end_user_email: end_user_email || null,
+        ticket_id: ticket_id || null,
+      })
+      .select()
+      .single();
+
+    if (insertError) {
+      console.log("[Request Consent] Insert error:", insertError.message);
+      return c.json({ error: `Failed to create session: ${insertError.message}` }, 500);
     }
 
-    // Update check-in time and status
-    const updatedAgent = {
-      ...agent,
-      last_checkin: new Date().toISOString(),
-      status: 'active',
-      ip_address: body.ip_address || agent.ip_address,
-      health_metrics: body.health_metrics || {},
-      active_connections: body.active_connections || 0,
-    }
+    // Send consent email via Resend
+    const approveUrl = `https://www.buboiq.com/consent/${consent_token}?action=approve`;
+    const denyUrl    = `https://www.buboiq.com/consent/${consent_token}?action=deny`;
+    const tech       = technician_name || "A technician";
+    const device     = device_name || device_id;
 
-    await kv.set(`agent:${agentId}`, updatedAgent)
+    const emailHtml = `
+      <div style="font-family:sans-serif;max-width:520px;margin:auto;padding:32px;background:#0B1021;color:#f3f4f6;border-radius:12px;">
+        <h2 style="color:#00FF94;margin-bottom:8px;">Remote Support Request</h2>
+        <p style="margin-bottom:24px;color:#94a3b8;">
+          <strong style="color:#f3f4f6;">${tech}</strong> is requesting remote access to
+          <strong style="color:#f3f4f6;">${device}</strong>.
+        </p>
+        <a href="${approveUrl}" style="display:inline-block;padding:14px 28px;background:#00FF94;color:#000;font-weight:700;border-radius:8px;text-decoration:none;margin-right:12px;">
+          ✓ Approve Access
+        </a>
+        <a href="${denyUrl}" style="display:inline-block;padding:14px 28px;background:#ef4444;color:#fff;font-weight:700;border-radius:8px;text-decoration:none;">
+          ✗ Deny Access
+        </a>
+        <p style="margin-top:28px;font-size:12px;color:#64748b;">
+          Only approve if you expected this support request. This link expires after use.
+        </p>
+      </div>`;
 
-    console.log(`Agent check-in: ${agentId}`)
-
-    return c.json({
-      success: true,
-      config: {
-        checkin_interval: 300,
-        posture_check_interval: 600,
+    const resendRes = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${Deno.env.get("RESEND_API_KEY")}`,
       },
-      commands: [] // TODO: Return pending commands
-    })
-  } catch (error) {
-    console.error('Agent check-in error:', error)
-    return c.json({ error: 'Check-in failed', details: error.message }, 500)
+      body: JSON.stringify({
+        from: "BuboIQ <noreply@buboiq.com>",
+        to: [end_user_email],
+        subject: `Remote Support Request — ${device}`,
+        html: emailHtml,
+      }),
+    });
+
+    if (!resendRes.ok) {
+      const resendErr = await resendRes.text();
+      console.log("[Request Consent] Resend error:", resendErr);
+      // Non-fatal — session is created; log but continue
+    } else {
+      console.log(`[Request Consent] Consent email sent to ${end_user_email}`);
+    }
+
+    // Store human-readable names in KV so the public consent page can display them
+    await kv.set(`session_meta:${session.id}`, {
+      device_name:      device_name || device_id,
+      technician_name:  technician_name || "A support technician",
+    });
+
+    console.log(`[Request Consent] Session ${session.id} created, token ${consent_token}`);
+    return c.json({ success: true, session_id: session.id, consent_token, status: session.status });
+  } catch (err: any) {
+    console.log("[Request Consent] Error:", err.message);
+    return c.json({ error: err.message || "Failed to create consent session" }, 500);
   }
-})
+});
 
-// Report posture data
-app.post('/agents/:agentId/posture', async (c) => {
+// GET /remote/consent/:token — public; returns session info for the consent page
+app.get("/make-server-55e8c5b2/remote/consent/:token", async (c) => {
   try {
-    const agentId = c.req.param('agentId')
-    const body = await c.req.json()
+    const token = c.req.param("token");
 
-    const agent = await kv.get(`agent:${agentId}`)
-    if (!agent) {
-      return c.json({ error: 'Agent not found' }, 404)
+    const supabaseClient = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    );
+
+    const { data: session, error } = await supabaseClient
+      .from("remote_sessions")
+      .select("id, status, consent_status, device_id, end_user_email, created_at, ticket_id")
+      .eq("consent_token", token)
+      .single();
+
+    if (error || !session) {
+      return c.json({ error: "Consent session not found or expired" }, 404);
     }
 
-    // Store posture data
-    const postureData = {
-      agent_id: agentId,
-      org_id: agent.org_id,
-      timestamp: new Date().toISOString(),
-      signals: body.signals || {},
-      compliance_status: body.compliance_status || 'unknown',
-      failed_checks: body.failed_checks || [],
-    }
-
-    const postureKey = `posture:${agentId}:${Date.now()}`
-    await kv.set(postureKey, postureData)
-    await kv.set(`posture:latest:${agentId}`, postureData)
-
-    console.log(`Posture data received from agent: ${agentId}`)
-
-    // Check for failures and auto-create tickets if needed
-    if (body.failed_checks && body.failed_checks.length > 0) {
-      console.log(`Agent ${agentId} has ${body.failed_checks.length} failed checks`)
-      // TODO: Auto-create tickets for critical failures
-    }
+    // Merge human-readable names stored in KV at request time
+    const meta: any = await kv.get(`session_meta:${session.id}`).catch(() => null);
 
     return c.json({
       success: true,
-      actions: [] // TODO: Return remediation actions
-    })
-  } catch (error) {
-    console.error('Posture report error:', error)
-    return c.json({ error: 'Failed to process posture data', details: error.message }, 500)
-  }
-})
-
-// Get all agents for organization
-app.get('/agents', async (c) => {
-  try {
-    const { error: authError, user } = await getAuthUser(c.req.header('Authorization'))
-    if (authError || !user) {
-      return c.json({ error: authError || 'Unauthorized' }, 401)
-    }
-
-    const userData = getUserMetadata(user)
-    
-    // Get all agent IDs for this org
-    const agentKeys = await kv.getByPrefix(`agent:org:${userData.org_id}:`)
-    
-    const agents = []
-    for (const [key, agentId] of agentKeys) {
-      const agent = await kv.get(`agent:${agentId}`)
-      if (agent) {
-        agents.push(agent)
-      }
-    }
-
-    return c.json({
-      success: true,
-      agents,
-      total: agents.length
-    })
-  } catch (error) {
-    console.error('Get agents error:', error)
-    return c.json({ error: 'Failed to fetch agents', details: error.message }, 500)
-  }
-})
-
-// Get agent installer download link
-app.get('/agents/download/:platform', async (c) => {
-  try {
-    const { error: authError, user } = await getAuthUser(c.req.header('Authorization'))
-    if (authError || !user) {
-      return c.json({ error: authError || 'Unauthorized' }, 401)
-    }
-
-    const userData = getUserMetadata(user)
-    const platform = c.req.param('platform')
-
-    // Generate agent configuration
-    const config = {
-      org_id: userData.org_id,
-      api_endpoint: Deno.env.get('SUPABASE_URL'),
-      registration_key: crypto.randomUUID(),
-      platform,
-    }
-
-    // Store registration key
-    await kv.set(`agent:regkey:${config.registration_key}`, {
-      org_id: userData.org_id,
-      created_at: new Date().toISOString(),
-      expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // 24 hours
-    })
-
-    // In production, these would be actual installer URLs
-    const downloadUrls = {
-      windows: `https://agents.buboiq.com/buboiq-agent-windows-amd64.exe?key=${config.registration_key}`,
-      macos: `https://agents.buboiq.com/buboiq-agent-macos-universal.pkg?key=${config.registration_key}`,
-      linux: `https://agents.buboiq.com/buboiq-agent-linux-amd64.deb?key=${config.registration_key}`,
-    }
-
-    return c.json({
-      success: true,
-      platform,
-      download_url: downloadUrls[platform] || downloadUrls.windows,
-      config,
-      instructions: {
-        windows: 'Run the installer as Administrator',
-        macos: 'Double-click the .pkg file and follow the installer',
-        linux: 'Run: sudo dpkg -i buboiq-agent-linux-amd64.deb',
-      }
-    })
-  } catch (error) {
-    console.error('Agent download error:', error)
-    return c.json({ error: 'Failed to generate download link', details: error.message }, 500)
-  }
-})
-
-// Test agent endpoint (for development)
-app.post('/agents/test', async (c) => {
-  try {
-    const { error: authError, user } = await getAuthUser(c.req.header('Authorization'))
-    if (authError || !user) {
-      return c.json({ error: authError || 'Unauthorized' }, 401)
-    }
-
-    const userData = getUserMetadata(user)
-    const body = await c.req.json()
-
-    // Create a test agent
-    const testAgent = {
-      id: `test-${crypto.randomUUID().slice(0, 8)}`,
-      hostname: body.hostname || `test-machine-${Date.now()}`,
-      platform: body.platform || 'windows',
-      platform_version: body.platform_version || 'Windows 11',
-      agent_version: '1.0.0-test',
-      org_id: userData.org_id,
-      ip_address: body.ip_address || '192.168.1.100',
-      mac_address: body.mac_address || '00:1B:44:11:3A:B7',
-      capabilities: ['posture', 'remote-access', 'monitoring'],
-      status: 'active',
-      registered_at: new Date().toISOString(),
-      last_checkin: new Date().toISOString(),
-      metadata: { test: true, ...body.metadata }
-    }
-
-    await kv.set(`agent:${testAgent.id}`, testAgent)
-    await kv.set(`agent:org:${userData.org_id}:${testAgent.id}`, testAgent.id)
-
-    console.log(`Test agent created: ${testAgent.id}`)
-
-    return c.json({
-      success: true,
-      message: 'Test agent created successfully',
-      agent: testAgent
-    })
-  } catch (error) {
-    console.error('Test agent creation error:', error)
-    return c.json({ error: 'Failed to create test agent', details: error.message }, 500)
-  }
-})
-
-// Delete agent
-app.delete('/agents/:agentId', async (c) => {
-  try {
-    const { error: authError, user } = await getAuthUser(c.req.header('Authorization'))
-    if (authError || !user) {
-      return c.json({ error: authError || 'Unauthorized' }, 401)
-    }
-
-    const userData = getUserMetadata(user)
-    const agentId = c.req.param('agentId')
-
-    const agent = await kv.get(`agent:${agentId}`)
-    if (!agent) {
-      return c.json({ error: 'Agent not found' }, 404)
-    }
-
-    // Verify ownership
-    if (agent.org_id !== userData.org_id) {
-      return c.json({ error: 'Forbidden' }, 403)
-    }
-
-    // Delete agent
-    await kv.del(`agent:${agentId}`)
-    await kv.del(`agent:org:${userData.org_id}:${agentId}`)
-    await kv.del(`posture:latest:${agentId}`)
-
-    console.log(`Agent deleted: ${agentId}`)
-
-    return c.json({
-      success: true,
-      message: 'Agent deleted successfully'
-    })
-  } catch (error) {
-    console.error('Agent deletion error:', error)
-    return c.json({ error: 'Failed to delete agent', details: error.message }, 500)
-  }
-})
-
-// ============================================================================
-// AUTH ENDPOINTS (existing from your auth system)
-// ============================================================================
-
-app.post('/auth/signup', async (c) => {
-  try {
-    const body = await c.req.json()
-    const { email, password, name, role = 'tech' } = body
-
-    const { data, error } = await supabase.auth.admin.createUser({
-      email,
-      password,
-      email_confirm: true,
-      user_metadata: {
-        name,
-        role,
-        tier: role === 'super_admin' ? 'team' : 'starter',
-        company_name: body.companyName || 'My Company',
-      }
-    })
-
-    if (error) {
-      console.error('Signup error:', error)
-      return c.json({ error: error.message }, 400)
-    }
-
-    return c.json({
-      success: true,
-      user: getUserMetadata(data.user)
-    })
-  } catch (error) {
-    console.error('Signup exception:', error)
-    return c.json({ error: 'Signup failed', details: error.message }, 500)
-  }
-})
-
-app.post('/auth/signin', async (c) => {
-  try {
-    const body = await c.req.json()
-    const { email, password } = body
-
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    })
-
-    if (error) {
-      return c.json({ error: error.message }, 401)
-    }
-
-    return c.json({
-      success: true,
-      access_token: data.session.access_token,
-      refresh_token: data.session.refresh_token,
-      user: getUserMetadata(data.user)
-    })
-  } catch (error) {
-    console.error('Sign in exception:', error)
-    return c.json({ error: 'Sign in failed', details: error.message }, 500)
-  }
-})
-
-app.get('/auth/me', async (c) => {
-  try {
-    const { error: authError, user } = await getAuthUser(c.req.header('Authorization'))
-    if (authError || !user) {
-      return c.json({ error: authError || 'Unauthorized' }, 401)
-    }
-
-    return c.json(getUserMetadata(user))
-  } catch (error) {
-    return c.json({ error: 'Failed to get user', details: error.message }, 500)
-  }
-})
-
-// ============================================================================
-// SUPER ADMIN ENDPOINTS
-// ============================================================================
-
-app.get('/super-admin/organizations', async (c) => {
-  try {
-    const { error: authError, user } = await getAuthUser(c.req.header('Authorization'))
-    if (authError || !user) {
-      return c.json({ error: 'Unauthorized' }, 401)
-    }
-
-    const userData = getUserMetadata(user)
-    
-    // Check super admin
-    if (userData.db_role !== 'super_admin') {
-      return c.json({ error: 'Forbidden: Super admin access required' }, 403)
-    }
-
-    // Get all organizations
-    const orgKeys = await kv.getByPrefix('org:')
-    const organizations = []
-
-    for (const [key, org] of orgKeys) {
-      if (key.startsWith('org:') && !key.includes(':user:')) {
-        organizations.push(org)
-      }
-    }
-
-    return c.json({
-      success: true,
-      organizations
-    })
-  } catch (error) {
-    console.error('Get organizations error:', error)
-    return c.json({ error: 'Failed to fetch organizations', details: error.message }, 500)
-  }
-})
-
-app.post('/super-admin/organizations/create', async (c) => {
-  try {
-    const { error: authError, user } = await getAuthUser(c.req.header('Authorization'))
-    if (authError || !user) {
-      return c.json({ error: 'Unauthorized' }, 401)
-    }
-
-    const userData = getUserMetadata(user)
-    
-    if (userData.db_role !== 'super_admin') {
-      return c.json({ error: 'Forbidden' }, 403)
-    }
-
-    const body = await c.req.json()
-    
-    const newOrg = {
-      id: crypto.randomUUID(),
-      name: body.name,
-      domain: body.domain || null,
-      tier: body.tier || 'starter',
-      status: body.status || 'active',
-      createdAt: new Date().toISOString(),
-      settings: {
-        maxUsers: -1, // Unlimited for test orgs
-        maxDevices: -1
+      session: {
+        ...session,
+        device_name:     meta?.device_name     || session.device_id,
+        technician_name: meta?.technician_name || "A support technician",
       },
-      metadata: body.metadata || {}
-    }
-
-    await kv.set(`org:${newOrg.id}`, newOrg)
-
-    console.log('Organization created:', newOrg.name, newOrg.id)
-
-    return c.json({
-      success: true,
-      organization: newOrg
-    })
-  } catch (error) {
-    console.error('Create organization error:', error)
-    return c.json({ error: 'Failed to create organization', details: error.message }, 500)
+    });
+  } catch (err: any) {
+    console.log("[Consent GET] Error:", err.message);
+    return c.json({ error: err.message || "Failed to fetch consent session" }, 500);
   }
-})
+});
 
-app.get('/super-admin/organizations/:orgId/users', async (c) => {
+// POST /remote/consent/:token/respond — public; approves or denies a session by consent_token
+app.post("/make-server-55e8c5b2/remote/consent/:token/respond", async (c) => {
   try {
-    const { error: authError, user } = await getAuthUser(c.req.header('Authorization'))
-    if (authError || !user) {
-      return c.json({ error: 'Unauthorized' }, 401)
+    const token = c.req.param("token");
+    const body = await c.req.json();
+    const { action } = body;
+
+    if (action !== "approve" && action !== "deny") {
+      return c.json({ error: "action must be 'approve' or 'deny'" }, 400);
     }
 
-    const userData = getUserMetadata(user)
-    
-    if (userData.db_role !== 'super_admin') {
-      return c.json({ error: 'Forbidden' }, 403)
+    const supabaseClient = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    );
+
+    // Verify the session exists and is still pending
+    const { data: existing, error: fetchError } = await supabaseClient
+      .from("remote_sessions")
+      .select("id, consent_status")
+      .eq("consent_token", token)
+      .single();
+
+    if (fetchError || !existing) {
+      return c.json({ error: "Consent session not found or expired" }, 404);
+    }
+    if (existing.consent_status !== "pending") {
+      return c.json({ error: "This consent request has already been responded to" }, 409);
     }
 
-    const orgId = c.req.param('orgId')
-    const userKeys = await kv.getByPrefix(`org:${orgId}:user:`)
-    
-    const users = []
-    for (const [key, userId] of userKeys) {
-      const { data, error } = await supabase.auth.admin.getUserById(userId)
-      if (data?.user) {
-        users.push(getUserMetadata(data.user))
-      }
+    const newConsentStatus = action === "approve" ? "approved" : "denied";
+    const newStatus        = action === "approve" ? "active"   : "denied";
+
+    const { error: updateError } = await supabaseClient
+      .from("remote_sessions")
+      .update({ consent_status: newConsentStatus, status: newStatus })
+      .eq("consent_token", token);
+
+    if (updateError) {
+      console.log("[Consent Respond] Update error:", updateError.message);
+      return c.json({ error: `Failed to update session: ${updateError.message}` }, 500);
     }
 
-    return c.json({
-      success: true,
-      users
-    })
-  } catch (error) {
-    console.error('Get org users error:', error)
-    return c.json({ error: 'Failed to fetch users', details: error.message }, 500)
+    console.log(`[Consent Respond] Token ${token} → ${newConsentStatus}`);
+    return c.json({ success: true, status: newStatus, consent_status: newConsentStatus });
+  } catch (err: any) {
+    console.log("[Consent Respond] Error:", err.message);
+    return c.json({ error: err.message || "Failed to respond to consent session" }, 500);
   }
-})
+});
 
-app.post('/super-admin/organizations/:orgId/users/create', async (c) => {
+// GET /remote/session/:id/status — authenticated; returns session status fields by id
+app.get("/make-server-55e8c5b2/remote/session/:id/status", async (c) => {
   try {
-    const { error: authError, user } = await getAuthUser(c.req.header('Authorization'))
-    if (authError || !user) {
-      return c.json({ error: 'Unauthorized' }, 401)
-    }
+    const authHeader = c.req.header("Authorization")?.replace("Bearer ", "");
+    if (!authHeader) return c.json({ error: "Unauthorized" }, 401);
 
-    const userData = getUserMetadata(user)
-    
-    if (userData.db_role !== 'super_admin') {
-      return c.json({ error: 'Forbidden' }, 403)
-    }
+    const supabaseClient = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    );
+    const { data: { user }, error: authError } = await supabaseClient.auth.getUser(authHeader);
+    if (authError || !user) return c.json({ error: "Unauthorized" }, 401);
 
-    const orgId = c.req.param('orgId')
-    const body = await c.req.json()
+    const id = c.req.param("id");
 
-    const password = crypto.randomUUID().slice(0, 12)
-    
-    const { data, error } = await supabase.auth.admin.createUser({
-      email: body.email,
-      password,
-      email_confirm: true,
-      user_metadata: {
-        name: body.name,
-        role: body.role || 'tech',
-        tier: body.tier || 'starter',
-        org_id: orgId,
-      }
-    })
+    const { data: session, error } = await supabaseClient
+      .from("remote_sessions")
+      .select("id, status, consent_status, started_at")
+      .eq("id", id)
+      .single();
 
-    if (error) {
-      return c.json({ error: error.message }, 400)
-    }
-
-    await kv.set(`org:${orgId}:user:${data.user.id}`, data.user.id)
-
-    return c.json({
-      success: true,
-      user: getUserMetadata(data.user),
-      password
-    })
-  } catch (error) {
-    console.error('Create user error:', error)
-    return c.json({ error: 'Failed to create user', details: error.message }, 500)
-  }
-})
-
-// ============================================================================
-// MOCK DATA ENDPOINTS (for development)
-// ============================================================================
-
-app.get('/stats/dashboard', async (c) => {
-  try {
-    const { error: authError, user } = await getAuthUser(c.req.header('Authorization'))
-    if (authError || !user) {
-      return c.json({ error: 'Unauthorized' }, 401)
-    }
-
-    const userData = getUserMetadata(user)
-
-    // Get real stats from KV store
-    const tickets = await kv.getByPrefix(`ticket:org:${userData.org_id}:`)
-    const devices = await kv.getByPrefix(`device:org:${userData.org_id}:`)
-    const signals = await kv.getByPrefix(`signal:org:${userData.org_id}:`)
-    
-    const ticketList = []
-    const deviceList = []
-    const signalList = []
-
-    for (const [key, value] of tickets) {
-      const ticket = await kv.get(`ticket:${value}`)
-      if (ticket) ticketList.push(ticket)
-    }
-
-    for (const [key, value] of devices) {
-      const device = await kv.get(`device:${value}`)
-      if (device) deviceList.push(device)
-    }
-
-    for (const [key, value] of signals) {
-      const signal = await kv.get(`signal:${value}`)
-      if (signal) signalList.push(signal)
+    if (error || !session) {
+      return c.json({ error: "Session not found" }, 404);
     }
 
     return c.json({
-      activeTickets: ticketList.filter(t => t.status === 'open' || t.status === 'in_progress').length,
-      resolvedToday: ticketList.filter(t => {
-        const resolved = new Date(t.resolved_at || 0)
-        const today = new Date()
-        return resolved.toDateString() === today.toDateString()
-      }).length,
-      devicesOnline: deviceList.filter(d => d.is_online).length,
-      devicesTotal: deviceList.length,
-      criticalDevices: deviceList.filter(d => d.health_score < 50).length,
-      activeSignals: signalList.filter(s => s.status === 'active').length,
-      systemUptime: 99.9,
-      networkHealth: Math.round(deviceList.reduce((sum, d) => sum + (d.health_score || 85), 0) / Math.max(deviceList.length, 1))
-    })
-  } catch (error) {
-    console.error('Dashboard stats error:', error)
-    return c.json({ error: 'Failed to get dashboard stats' }, 500)
+      id: session.id,
+      status: session.status,
+      consent_status: session.consent_status,
+      started_at: session.started_at,
+    });
+  } catch (err: any) {
+    console.log("[Session Status] Error:", err.message);
+    return c.json({ error: err.message || "Failed to fetch session status" }, 500);
   }
-})
+});
 
-app.get('/tickets', async (c) => {
+// GET /admin/stats — super-admin only; counts rows in core tables using service role (bypasses RLS)
+app.get("/make-server-55e8c5b2/admin/stats", async (c) => {
   try {
-    const { error: authError, user } = await getAuthUser(c.req.header('Authorization'))
-    if (authError || !user) {
-      return c.json({ error: 'Unauthorized' }, 401)
-    }
+    const authHeader = c.req.header("Authorization")?.replace("Bearer ", "");
+    if (!authHeader) return c.json({ error: "Unauthorized" }, 401);
 
-    const userData = getUserMetadata(user)
-    const ticketKeys = await kv.getByPrefix(`ticket:org:${userData.org_id}:`)
-    
-    const tickets = []
-    for (const [key, ticketId] of ticketKeys) {
-      const ticket = await kv.get(`ticket:${ticketId}`)
-      if (ticket) {
-        tickets.push(ticket)
-      }
-    }
+    const supabaseClient = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    );
+    const { data: { user }, error: authError } = await supabaseClient.auth.getUser(authHeader);
+    if (authError || !user) return c.json({ error: "Unauthorized" }, 401);
 
-    return c.json({ tickets })
-  } catch (error) {
-    console.error('Get tickets error:', error)
-    return c.json({ error: 'Failed to get tickets' }, 500)
+    const counts: Record<string, number> = {};
+
+    const tables = ["organizations", "profiles", "devices", "tickets", "signals"] as const;
+    await Promise.all(
+      tables.map(async (table) => {
+        const { count, error } = await supabaseClient
+          .from(table)
+          .select("id", { count: "exact", head: true });
+        if (error) {
+          console.log(`[Admin Stats] ${table} count error:`, error.message);
+          counts[table] = 0;
+        } else {
+          counts[table] = count ?? 0;
+        }
+      })
+    );
+
+    console.log("[Admin Stats] counts:", counts);
+    return c.json({ success: true, ...counts });
+  } catch (err: any) {
+    console.log("[Admin Stats] Error:", err.message);
+    return c.json({ error: err.message || "Failed to fetch admin stats" }, 500);
   }
-})
+});
 
-app.post('/tickets', async (c) => {
+// GET /notifications — authenticated; returns recent signals + tickets as notifications
+app.get("/make-server-55e8c5b2/notifications", async (c) => {
   try {
-    const { error: authError, user } = await getAuthUser(c.req.header('Authorization'))
-    if (authError || !user) {
-      return c.json({ error: 'Unauthorized' }, 401)
+    const authHeader = c.req.header("Authorization")?.replace("Bearer ", "");
+    if (!authHeader) return c.json({ error: "Unauthorized" }, 401);
+
+    const supabaseClient = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    );
+    const { data: { user }, error: authError } = await supabaseClient.auth.getUser(authHeader);
+    if (authError || !user) return c.json({ error: "Unauthorized" }, 401);
+
+    // Load read notification IDs from KV
+    const readData: any = await kv.get(`notifications_read:${user.id}`).catch(() => null);
+    const readIds: Set<string> = new Set(Array.isArray(readData?.ids) ? readData.ids : []);
+
+    // Fetch recent signals
+    const { data: signals } = await supabaseClient
+      .from("signals")
+      .select("id, title, type, severity, created_at")
+      .order("created_at", { ascending: false })
+      .limit(15);
+
+    // Fetch recent tickets
+    const { data: tickets } = await supabaseClient
+      .from("tickets")
+      .select("id, title, priority, created_at")
+      .order("created_at", { ascending: false })
+      .limit(10);
+
+    const notifications: any[] = [
+      ...(signals ?? []).map((s: any) => ({
+        id:         `signal:${s.id}`,
+        type:       "signal",
+        severity:   s.severity,
+        title:      s.title || "New signal detected",
+        subtitle:   s.type ? `Type: ${s.type}` : undefined,
+        created_at: s.created_at,
+        read:       readIds.has(`signal:${s.id}`),
+      })),
+      ...(tickets ?? []).map((t: any) => ({
+        id:         `ticket:${t.id}`,
+        type:       "ticket",
+        severity:   t.priority,
+        title:      t.title || "New ticket",
+        subtitle:   t.priority ? `Priority: ${t.priority}` : undefined,
+        created_at: t.created_at,
+        read:       readIds.has(`ticket:${t.id}`),
+      })),
+    ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+     .slice(0, 20);
+
+    const unread_count = notifications.filter(n => !n.read).length;
+    return c.json({ notifications, unread_count });
+  } catch (err: any) {
+    console.log("[Notifications] Error:", err.message);
+    return c.json({ error: err.message || "Failed to fetch notifications" }, 500);
+  }
+});
+
+// POST /notifications/read — authenticated; marks notification IDs as read in KV
+app.post("/make-server-55e8c5b2/notifications/read", async (c) => {
+  try {
+    const authHeader = c.req.header("Authorization")?.replace("Bearer ", "");
+    if (!authHeader) return c.json({ error: "Unauthorized" }, 401);
+
+    const supabaseClient = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    );
+    const { data: { user }, error: authError } = await supabaseClient.auth.getUser(authHeader);
+    if (authError || !user) return c.json({ error: "Unauthorized" }, 401);
+
+    const { ids } = await c.req.json();
+    if (!Array.isArray(ids)) return c.json({ error: "ids must be an array" }, 400);
+
+    const existing: any = await kv.get(`notifications_read:${user.id}`).catch(() => null);
+    const current: string[] = Array.isArray(existing?.ids) ? existing.ids : [];
+    const merged = Array.from(new Set([...current, ...ids])).slice(-200); // keep last 200
+    await kv.set(`notifications_read:${user.id}`, { ids: merged });
+
+    return c.json({ success: true, marked: ids.length });
+  } catch (err: any) {
+    console.log("[Notifications Read] Error:", err.message);
+    return c.json({ error: err.message || "Failed to mark notifications read" }, 500);
+  }
+});
+
+// AI triage: classify ticket and suggest a fix
+app.post("/make-server-55e8c5b2/ai/triage-ticket", async (c) => {
+  try {
+    const body = await c.req.json();
+    const { ticket_id, title, description, priority } = body;
+
+    if (!title) return c.json({ error: "title is required" }, 400);
+
+    const prompt = [
+      "You are an expert IT support triage assistant.",
+      "Analyze the following support ticket and respond with ONLY a valid JSON object — no markdown, no code fences.",
+      "",
+      `ticket_id: ${ticket_id ?? "unknown"}`,
+      `title: ${title}`,
+      description ? `description: ${description}` : "",
+      priority ? `current_priority: ${priority}` : "",
+      "",
+      "Return a JSON object with exactly these keys:",
+      '{ "suggested_priority": "critical"|"high"|"medium"|"low", "category": string, "sentiment": string, "suggested_fix": string, "estimated_time": string }',
+    ].filter(Boolean).join("\n");
+
+    const resp = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": Deno.env.get("ANTHROPIC_API_KEY") ?? "",
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 512,
+        messages: [{ role: "user", content: prompt }],
+      }),
+    });
+
+    if (!resp.ok) {
+      const err = await resp.text();
+      throw new Error(`Anthropic error ${resp.status}: ${err}`);
     }
 
-    const userData = getUserMetadata(user)
-    const body = await c.req.json()
+    const data = await resp.json();
+    const text = data.content?.[0]?.text ?? "";
+    const match = text.match(/\{[\s\S]*\}/);
+    const parsed = JSON.parse(match ? match[0] : text);
 
-    const ticket = {
+    console.log(`[Triage] ticket ${ticket_id} → priority: ${parsed.suggested_priority}`);
+    return c.json({ success: true, ticket_id, ...parsed });
+  } catch (err: any) {
+    console.log("[Triage] Error:", err.message);
+    return c.json({ error: err.message || "Failed to triage ticket" }, 500);
+  }
+});
+
+// AI suggest-fixes: return 1-3 actionable fix recommendations
+app.post("/make-server-55e8c5b2/ai/suggest-fixes", async (c) => {
+  try {
+    const body = await c.req.json();
+    const { ticket_id, title, description } = body;
+
+    if (!title) return c.json({ error: "title is required" }, 400);
+
+    const prompt = [
+      "You are an expert IT support engineer.",
+      "Given the following support ticket, provide 1-3 specific, actionable fix recommendations.",
+      "Respond with ONLY a valid JSON object — no markdown, no code fences.",
+      "",
+      `ticket_id: ${ticket_id ?? "unknown"}`,
+      `title: ${title}`,
+      description ? `description: ${description}` : "",
+      "",
+      "Return a JSON object with exactly this shape:",
+      '{ "fixes": [ { "title": string, "steps": string[], "difficulty": "easy"|"medium"|"hard", "estimated_time": string } ] }',
+      "Include 1 to 3 fixes. Each fix must have at least 2 concrete steps.",
+    ].filter(Boolean).join("\n");
+
+    const resp = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": Deno.env.get("ANTHROPIC_API_KEY") ?? "",
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 1024,
+        messages: [{ role: "user", content: prompt }],
+      }),
+    });
+
+    if (!resp.ok) {
+      const err = await resp.text();
+      throw new Error(`Anthropic error ${resp.status}: ${err}`);
+    }
+
+    const data = await resp.json();
+    const text = data.content?.[0]?.text ?? "";
+    const match = text.match(/\{[\s\S]*\}/);
+    const parsed = JSON.parse(match ? match[0] : text);
+
+    const fixes = Array.isArray(parsed.fixes) ? parsed.fixes : [];
+    console.log(`[SuggestFixes] ticket ${ticket_id} → ${fixes.length} fix(es) returned`);
+    return c.json({ success: true, ticket_id, fixes });
+  } catch (err: any) {
+    console.log("[SuggestFixes] Error:", err.message);
+    return c.json({ error: err.message || "Failed to suggest fixes" }, 500);
+  }
+});
+
+// POST /devices/:deviceId/commands — queue a remote command for the agent
+app.post("/make-server-55e8c5b2/devices/:deviceId/commands", async (c) => {
+  try {
+    const authHeader = c.req.header("Authorization")?.replace("Bearer ", "");
+    if (!authHeader) return c.json({ error: "Unauthorized" }, 401);
+
+    const supabaseClient = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    );
+    const { data: { user }, error: authError } = await supabaseClient.auth.getUser(authHeader);
+    if (authError || !user) return c.json({ error: "Unauthorized" }, 401);
+
+    const deviceId = c.req.param("deviceId");
+    const body = await c.req.json();
+    const { command_type } = body;
+
+    const VALID_COMMANDS = ["install_updates", "collect_inventory", "run_scan", "restart"];
+    if (!command_type || !VALID_COMMANDS.includes(command_type)) {
+      return c.json({ error: `command_type must be one of: ${VALID_COMMANDS.join(", ")}` }, 400);
+    }
+
+    const command = {
       id: crypto.randomUUID(),
-      title: body.title,
-      description: body.description || '',
-      priority: body.priority || 'medium',
-      status: 'open',
-      org_id: userData.org_id,
-      created_by: userData.id,
+      device_id: deviceId,
+      command_type,
+      status: "pending",
+      issued_by: user.id,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
-      requester: {
-        id: userData.id,
-        name: userData.name,
-        email: userData.email
-      },
-      assignee: body.assignee_id ? { id: body.assignee_id } : null,
-      tags: body.tags || [],
-      metadata: body.metadata || {}
-    }
+    };
 
-    await kv.set(`ticket:${ticket.id}`, ticket)
-    await kv.set(`ticket:org:${userData.org_id}:${ticket.id}`, ticket.id)
+    // Store command in KV list for this device (keep last 50)
+    const existing: any = await kv.get(`device_commands:${deviceId}`).catch(() => null);
+    const commands: any[] = Array.isArray(existing?.commands) ? existing.commands : [];
+    commands.unshift(command);
+    await kv.set(`device_commands:${deviceId}`, { commands: commands.slice(0, 50) });
 
-    return c.json({ success: true, ticket })
-  } catch (error) {
-    console.error('Create ticket error:', error)
-    return c.json({ error: 'Failed to create ticket' }, 500)
+    console.log(`[DeviceCommands] queued ${command_type} for device ${deviceId}`);
+    return c.json({ success: true, command });
+  } catch (err: any) {
+    console.log("[DeviceCommands POST] Error:", err.message);
+    return c.json({ error: err.message || "Failed to queue command" }, 500);
   }
-})
+});
 
-app.get('/devices', async (c) => {
+// GET /devices/:deviceId/commands — fetch command history (last 10)
+app.get("/make-server-55e8c5b2/devices/:deviceId/commands", async (c) => {
   try {
-    const { error: authError, user } = await getAuthUser(c.req.header('Authorization'))
-    if (authError || !user) {
-      return c.json({ error: 'Unauthorized' }, 401)
+    const authHeader = c.req.header("Authorization")?.replace("Bearer ", "");
+    if (!authHeader) return c.json({ error: "Unauthorized" }, 401);
+
+    const supabaseClient = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    );
+    const { data: { user }, error: authError } = await supabaseClient.auth.getUser(authHeader);
+    if (authError || !user) return c.json({ error: "Unauthorized" }, 401);
+
+    const deviceId = c.req.param("deviceId");
+    const existing: any = await kv.get(`device_commands:${deviceId}`).catch(() => null);
+    const commands: any[] = Array.isArray(existing?.commands) ? existing.commands : [];
+
+    return c.json({ success: true, commands: commands.slice(0, 10) });
+  } catch (err: any) {
+    console.log("[DeviceCommands GET] Error:", err.message);
+    return c.json({ error: err.message || "Failed to fetch commands" }, 500);
+  }
+});
+
+// PATCH /devices/:deviceId/commands/:commandId — approve or reject a pending command
+app.patch("/make-server-55e8c5b2/devices/:deviceId/commands/:commandId", async (c) => {
+  try {
+    const authHeader = c.req.header("Authorization")?.replace("Bearer ", "");
+    if (!authHeader) return c.json({ error: "Unauthorized" }, 401);
+
+    const supabaseClient = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    );
+    const { data: { user }, error: authError } = await supabaseClient.auth.getUser(authHeader);
+    if (authError || !user) return c.json({ error: "Unauthorized" }, 401);
+
+    const deviceId = c.req.param("deviceId");
+    const commandId = c.req.param("commandId");
+    const body = await c.req.json();
+    const { approval_status } = body;
+
+    if (approval_status !== "approved" && approval_status !== "rejected") {
+      return c.json({ error: "approval_status must be 'approved' or 'rejected'" }, 400);
     }
 
-    const userData = getUserMetadata(user)
-    const deviceKeys = await kv.getByPrefix(`device:org:${userData.org_id}:`)
-    
-    const devices = []
-    for (const [key, deviceId] of deviceKeys) {
-      const device = await kv.get(`device:${deviceId}`)
-      if (device) {
-        devices.push(device)
+    const existing: any = await kv.get(`device_commands:${deviceId}`).catch(() => null);
+    const commands: any[] = Array.isArray(existing?.commands) ? existing.commands : [];
+    const idx = commands.findIndex((cmd: any) => cmd.id === commandId);
+    if (idx === -1) return c.json({ error: "Command not found" }, 404);
+
+    commands[idx] = { ...commands[idx], approval_status, updated_at: new Date().toISOString() };
+    await kv.set(`device_commands:${deviceId}`, { commands });
+
+    console.log(`[DeviceCommands PATCH] command ${commandId} set to ${approval_status}`);
+    return c.json({ success: true, command: commands[idx] });
+  } catch (err: any) {
+    console.log("[DeviceCommands PATCH] Error:", err.message);
+    return c.json({ error: err.message || "Failed to update command" }, 500);
+  }
+});
+
+// POST /agent/checkin — unauthenticated agent check-in; upserts device then inventory
+// Accepts: { org_id, device_id, hostname, platform, platform_version, ip_address,
+//            mac_address, agent_version, status, inventory? }
+// The device MUST be upserted before inventory to satisfy the FK constraint.
+app.post("/make-server-55e8c5b2/agent/checkin", async (c) => {
+  try {
+    const body = await c.req.json();
+    const {
+      org_id, device_id, hostname, platform, platform_version,
+      ip_address, mac_address, agent_version, status = "online",
+      inventory,
+    } = body;
+
+    if (!org_id || !device_id || !hostname) {
+      return c.json({ error: "org_id, device_id, and hostname are required" }, 400);
+    }
+
+    const db = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    );
+
+    const now = new Date().toISOString();
+
+    // Step 1 — upsert the device record FIRST so the FK constraint is satisfied
+    const { error: deviceError } = await db.from("devices").upsert({
+      id: device_id,
+      org_id,
+      hostname,
+      platform,
+      platform_version,
+      ip_address,
+      mac_address,
+      agent_version,
+      status,
+      last_seen: now,
+    }, { onConflict: "id" });
+
+    if (deviceError) {
+      console.log("[Agent] Device upsert error:", deviceError);
+      return c.json({ error: "Failed to register device", details: deviceError.message }, 500);
+    }
+
+    console.log("[Agent] Device upserted:", device_id, hostname);
+
+    // Step 2 — upsert inventory only after the device row exists
+    if (inventory && typeof inventory === "object") {
+      const { error: invError } = await db.from("device_inventory").upsert({
+        device_id,
+        ...inventory,
+        updated_at: now,
+      }, { onConflict: "device_id" });
+
+      if (invError) {
+        // Non-fatal — device is registered; log and continue
+        console.log("[Agent] Inventory error:", invError);
+      } else {
+        console.log("[Agent] Inventory updated for device:", device_id);
       }
     }
 
-    return c.json({ devices })
-  } catch (error) {
-    console.error('Get devices error:', error)
-    return c.json({ error: 'Failed to get devices' }, 500)
+    // Step 3 — return any pending commands for this device
+    const existing: any = await kv.get(`device_commands:${device_id}`).catch(() => null);
+    const pending = (Array.isArray(existing?.commands) ? existing.commands : [])
+      .filter((cmd: any) => cmd.status === "pending");
+
+    return c.json({ success: true, device_id, pending_commands: pending });
+  } catch (err: any) {
+    console.log("[Agent] Checkin error:", err.message);
+    return c.json({ error: err.message || "Agent checkin failed" }, 500);
   }
-})
+});
 
-app.post('/devices', async (c) => {
-  try {
-    const { error: authError, user } = await getAuthUser(c.req.header('Authorization'))
-    if (authError || !user) {
-      return c.json({ error: 'Unauthorized' }, 401)
-    }
-
-    const userData = getUserMetadata(user)
-    const body = await c.req.json()
-
-    const device = {
-      id: crypto.randomUUID(),
-      hostname: body.hostname,
-      device_type: body.device_type || 'workstation',
-      ip_address: body.ip_address,
-      mac_address: body.mac_address,
-      operating_system: body.operating_system,
-      is_online: true,
-      health_score: 100,
-      risk_level: 'low',
-      linked_tickets_count: 0,
-      org_id: userData.org_id,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      last_seen_at: new Date().toISOString(),
-      tags: body.tags || [],
-      metadata: body.metadata || {}
-    }
-
-    await kv.set(`device:${device.id}`, device)
-    await kv.set(`device:org:${userData.org_id}:${device.id}`, device.id)
-
-    return c.json({ success: true, device })
-  } catch (error) {
-    console.error('Create device error:', error)
-    return c.json({ error: 'Failed to create device' }, 500)
-  }
-})
-
-app.get('/signals', async (c) => {
-  try {
-    const { error: authError, user } = await getAuthUser(c.req.header('Authorization'))
-    if (authError || !user) {
-      return c.json({ error: 'Unauthorized' }, 401)
-    }
-
-    const userData = getUserMetadata(user)
-    const signalKeys = await kv.getByPrefix(`signal:org:${userData.org_id}:`)
-    
-    const signals = []
-    for (const [key, signalId] of signalKeys) {
-      const signal = await kv.get(`signal:${signalId}`)
-      if (signal) {
-        signals.push(signal)
-      }
-    }
-
-    return c.json({ signals })
-  } catch (error) {
-    console.error('Get signals error:', error)
-    return c.json({ error: 'Failed to get signals' }, 500)
-  }
-})
-
-app.get('/admin/metrics', async (c) => {
-  try {
-    const { error: authError, user } = await getAuthUser(c.req.header('Authorization'))
-    if (authError || !user) {
-      return c.json({ error: 'Unauthorized' }, 401)
-    }
-
-    const userData = getUserMetadata(user)
-    
-    if (userData.db_role !== 'super_admin') {
-      return c.json({ error: 'Forbidden' }, 403)
-    }
-
-    // Get all organizations
-    const orgKeys = await kv.getByPrefix('org:')
-    let totalOrgs = 0
-    for (const [key] of orgKeys) {
-      if (!key.includes(':user:')) {
-        totalOrgs++
-      }
-    }
-
-    // Get all users (this is simplified, in production would query auth.users)
-    const { data: { users }, error } = await supabase.auth.admin.listUsers()
-    
-    return c.json({
-      totalUsers: users?.length || 0,
-      totalOrgs,
-      activeSessions: 0, // Would track active sessions
-      systemStatus: 'operational'
-    })
-  } catch (error) {
-    console.error('Admin metrics error:', error)
-    return c.json({ error: 'Failed to get admin metrics' }, 500)
-  }
-})
-
-// ============================================================================
-// SUPER ADMIN FEATURE CONTROLS
-// ============================================================================
-
-app.get('/super-admin/feature-overrides', async (c) => {
-  try {
-    const { error: authError, user } = await getAuthUser(c.req.header('Authorization'))
-    if (authError || !user) {
-      return c.json({ error: 'Unauthorized' }, 401)
-    }
-
-    const userData = getUserMetadata(user)
-    
-    if (userData.db_role !== 'super_admin') {
-      return c.json({ error: 'Forbidden' }, 403)
-    }
-
-    const overrides = await kv.get('feature_overrides') || {}
-
-    return c.json({
-      success: true,
-      overrides
-    })
-  } catch (error) {
-    console.error('Get feature overrides error:', error)
-    return c.json({ error: 'Failed to get feature overrides' }, 500)
-  }
-})
-
-app.post('/super-admin/feature-overrides', async (c) => {
-  try {
-    const { error: authError, user } = await getAuthUser(c.req.header('Authorization'))
-    if (authError || !user) {
-      return c.json({ error: 'Unauthorized' }, 401)
-    }
-
-    const userData = getUserMetadata(user)
-    
-    if (userData.db_role !== 'super_admin') {
-      return c.json({ error: 'Forbidden' }, 403)
-    }
-
-    const body = await c.req.json()
-    
-    await kv.set('feature_overrides', body.overrides)
-
-    console.log('Feature overrides updated by super admin:', userData.email)
-
-    return c.json({
-      success: true,
-      message: 'Feature overrides updated'
-    })
-  } catch (error) {
-    console.error('Update feature overrides error:', error)
-    return c.json({ error: 'Failed to update feature overrides' }, 500)
-  }
-})
-
-app.post('/super-admin/set-tier', async (c) => {
-  try {
-    const { error: authError, user } = await getAuthUser(c.req.header('Authorization'))
-    if (authError || !user) {
-      return c.json({ error: 'Unauthorized' }, 401)
-    }
-
-    const userData = getUserMetadata(user)
-    
-    if (userData.db_role !== 'super_admin') {
-      return c.json({ error: 'Forbidden' }, 403)
-    }
-
-    const body = await c.req.json()
-    const { userId, tier } = body
-
-    const { data, error } = await supabase.auth.admin.updateUserById(userId, {
-      user_metadata: {
-        tier
-      }
-    })
-
-    if (error) {
-      return c.json({ error: error.message }, 400)
-    }
-
-    console.log(`Super admin ${userData.email} changed tier for user ${userId} to ${tier}`)
-
-    return c.json({
-      success: true,
-      message: `User tier updated to ${tier}`
-    })
-  } catch (error) {
-    console.error('Set tier error:', error)
-    return c.json({ error: 'Failed to set tier' }, 500)
-  }
-})
-
-// Catch all
-app.all('*', (c) => {
-  console.log(`[404] Route not found: ${c.req.method} ${c.req.url}`)
-  return c.json({ 
-    error: 'Route not found',
-    path: c.req.url,
-    method: c.req.method 
-  }, 404)
-})
-
-Deno.serve(app.fetch)
-
-console.log('🚀 BuboIQ Make Server started')
-console.log('📡 Agent endpoints available at /make-server-55e8c5b2/agents/*')
+Deno.serve(app.fetch);

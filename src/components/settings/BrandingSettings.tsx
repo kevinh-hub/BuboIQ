@@ -7,7 +7,7 @@ import { Palette, Save } from 'lucide-react';
 import { BrandingSettings as BrandingSettingsType } from './types';
 import { validateBrandingSettings, ValidationError } from './validation';
 import FileUpload from './FileUpload';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 
 interface BrandingSettingsProps {
   settings: BrandingSettingsType;

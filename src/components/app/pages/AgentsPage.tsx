@@ -29,7 +29,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../../ui/dropdown-menu';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../ui/tabs';
 import { LoadingSpinner, ErrorState, EmptyState } from '../../SystemStates';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { projectId, publicAnonKey } from '../../../utils/supabase/info';
 import { supabase } from '../../../utils/supabase/client';
 

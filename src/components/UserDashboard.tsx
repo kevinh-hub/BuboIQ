@@ -18,7 +18,7 @@ import {
   User as UserIcon,
   AlertCircle
 } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 
 export default function UserDashboard() {
   const { user, tickets, createTicket, setCurrentPage, setSelectedTicket } = useApp();

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Check, Copy, ChevronDown, ChevronUp, AlertTriangle, Info, CheckCircle2, XCircle } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 
 /**
  * BuboIQ Analyst v1 - Component Library

@@ -249,7 +249,7 @@ export const EmptyStates = {
 // Toast Messages (examples for sonner)
 export const showToasts = {
   success: (message: string) => {
-    // import { toast } from 'sonner@2.0.3';
+    // import { toast } from 'sonner';
     console.log('Success:', message);
   },
   warning: (message: string) => {

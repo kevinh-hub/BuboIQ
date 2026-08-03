@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Clock, Save, AlertTriangle } from 'lucide-react';
 import { SLASettings as SLASettingsType, TIMEZONE_OPTIONS } from './types';
 import { validateSLASettings, ValidationError } from './validation';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 
 interface SLASettingsProps {
   settings: SLASettingsType;

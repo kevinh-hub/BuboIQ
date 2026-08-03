@@ -17,7 +17,7 @@ import { apiClient, initializeBackend } from '../hooks/useApi';
 import { getRolePermissions } from '../utils/permissions';
 import { createTrialInfo, calculateTrialDaysRemaining } from '../utils/trial';
 import { convertApiTicket, convertApiTickets } from '../utils/api-helpers';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import type { 
   User, 
   Signal, 

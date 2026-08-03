@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { ArrowLeft, Save, Upload, TrendingUp, History } from 'lucide-react';
 import { AnalystButton, AnalystBadge, CodeBlock, TierGuardBanner } from '../AnalystComponentLibrary';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '../../ui/accordion';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 
 /**
  * Screen 3: KB Draft Editor

@@ -20,7 +20,7 @@ import { Badge } from '../ui/badge';
 import { EABadge, CountdownBadge } from './EABadges';
 import { CreateInviteModal } from './CreateInviteModal';
 import { projectId, publicAnonKey } from '../../utils/supabase/info';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 
 interface CohortStats {
   invitesAvailable: number;

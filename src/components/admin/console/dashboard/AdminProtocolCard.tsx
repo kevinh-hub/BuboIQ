@@ -2,8 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '../../../ui/card';
 import { Activity, ListChecks } from 'lucide-react';
 import { Badge } from '../../../ui/badge';
-import { useAuth } from '../../../context/AuthContext';
-import { projectId } from '../../../utils/supabase/info';
+import { useAuth } from '../../../../context/AuthContext';
+import { projectId } from '../../../../utils/supabase/info';
 import { formatDistanceToNow } from 'date-fns';
 
 export const AdminProtocolCard = () => {

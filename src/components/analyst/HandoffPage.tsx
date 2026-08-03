@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Copy, Check, Download, Code, Palette, FileCode } from 'lucide-react';
 import { AnalystButton, ConfidenceOrb, CodeBlock } from './AnalystComponentLibrary';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/tabs';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 
 /**
  * BuboIQ Analyst v1 - Developer Handoff Page

@@ -5,7 +5,7 @@ import { Label } from './ui/label';
 import { Textarea } from './ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { useApp } from '../App';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { Upload, X, AlertCircle, CheckCircle2, FileText, Image, FileArchive, Send, Sparkles, Info } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
 

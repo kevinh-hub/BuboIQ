@@ -12,7 +12,7 @@ import { ConsoleStream, ConsoleStatus } from './console-stream';
 import { OSBadge, OSType } from './os-badge';
 import { SafetyChip, SafetyLevel } from './safety-chip';
 import { Badge } from '../ui/badge';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import * as GuidedFixesAPI from '../../utils/guided-fixes-service';
 
 export type ExecutionPath = 'agent' | 'connect' | 'winrm';

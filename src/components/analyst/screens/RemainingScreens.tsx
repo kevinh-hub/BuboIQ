@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import { AnalystButton, AnalystBadge, EmptyState } from '../AnalystComponentLibrary';
 import { Switch } from '../../ui/switch';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 
 /**
  * Screen 9: Roles & Access

@@ -21,7 +21,7 @@ import {
   Clock,
   AlertCircle
 } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 
 export default function TicketList() {
   const { user, tickets, setSelectedTicket, setCurrentPage, createTicket, permissions, updateTicket, users } = useApp();

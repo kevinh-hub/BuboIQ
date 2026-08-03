@@ -3,9 +3,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '../../../ui/card';
 import { Button } from '../../../ui/button';
 import { Server, Download, ExternalLink } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../../ui/select';
-import { useAuth } from '../../../context/AuthContext';
-import { projectId } from '../../../utils/supabase/info';
-import { toast } from 'sonner@2.0.3';
+import { useAuth } from '../../../../context/AuthContext';
+import { projectId } from '../../../../utils/supabase/info';
+import { toast } from 'sonner';
 
 export const AgentsDevicesCard = () => {
   const { session } = useAuth();

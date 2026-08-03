@@ -7,7 +7,7 @@ import {
   ActionItem,
   EmptyState 
 } from '../AnalystComponentLibrary';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 
 /**
  * Screen 1: Agent Console

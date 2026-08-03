@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import { Button } from '../ui/button';
 import { Label } from '../ui/label';
 import { Upload, X, Image } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 
 interface FileUploadProps {
   label: string;

@@ -8,7 +8,7 @@ import { Switch } from '../../../ui/switch';
 import { CreditCard, Save } from 'lucide-react';
 import { Badge } from '../../../ui/badge';
 import { useSuperAdmin } from '../SuperAdminContext';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 
 export const PricingPlansCard = () => {
   const { config, updateConfig } = useSuperAdmin();

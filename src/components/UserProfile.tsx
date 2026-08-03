@@ -8,7 +8,7 @@ import { Separator } from './ui/separator';
 import UserSidebar from './UserSidebar';
 import { useApp } from '../App';
 import { User as UserIcon, Bell, Save, Eye, EyeOff } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 
 export default function UserProfile() {
   const { user } = useApp();

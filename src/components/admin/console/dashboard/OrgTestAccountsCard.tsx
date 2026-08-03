@@ -3,8 +3,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '../../../ui/card';
 import { Button } from '../../../ui/button';
 import { Building, ArrowUpRight, UserCog } from 'lucide-react';
 import { Badge } from '../../../ui/badge';
-import { useAuth } from '../../../context/AuthContext';
-import { projectId } from '../../../utils/supabase/info';
+import { useAuth } from '../../../../context/AuthContext';
+import { projectId } from '../../../../utils/supabase/info';
 
 interface OrgTestAccountsCardProps {
   onOpenManager?: () => void;

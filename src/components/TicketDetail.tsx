@@ -9,7 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { useApp } from '../App';
 import Sidebar from './Sidebar';
 import { ArrowLeft, MessageSquare, Clock, User, Tag, AlertCircle, Paperclip, Send } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 
 export default function TicketDetail() {
   const { user, selectedTicket, setCurrentPage, updateTicket, addComment } = useApp();

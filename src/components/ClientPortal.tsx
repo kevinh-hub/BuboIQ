@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
 import { useApp } from '../context/AppContext';
 import { Plus, MessageSquare, Clock, Paperclip, LogOut } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 
 export default function ClientPortal() {
   const { user, legacySignals, logout, createLegacySignal } = useApp();

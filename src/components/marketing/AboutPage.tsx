@@ -5,7 +5,7 @@ import { Card } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { OrbSystem } from './OrbSystem';
 import { DeviceNetworkOrb } from './DeviceNetworkOrb';
-import kevinImage from 'figma:asset/41a49c28f6517f5aed0ec919dc272807fbbefaf2.png';
+import kevinImage from '../../assets/kevin-headshot.png';
 
 interface AboutPageProps {
   onNavigate: (page: string) => void;

@@ -3,8 +3,8 @@ import { Card, CardContent } from '../../../ui/card';
 import { Activity, Users, Server, AlertCircle, CheckCircle, ShieldAlert, Lock } from 'lucide-react';
 import { Badge } from '../../../ui/badge';
 import { useSuperAdmin } from '../SuperAdminContext';
-import { projectId } from '../../../utils/supabase/info';
-import { useAuth } from '../../../context/AuthContext';
+import { projectId } from '../../../../utils/supabase/info';
+import { useAuth } from '../../../../context/AuthContext';
 
 export const PlatformOverviewCard = () => {
   const { config } = useSuperAdmin();

@@ -6,7 +6,7 @@ import NotificationSettings from './settings/NotificationSettings';
 import SLASettings from './settings/SLASettings';
 import BrandingSettings from './settings/BrandingSettings';
 import { AppSettings, DEFAULT_SETTINGS } from './settings/types';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);

@@ -13,7 +13,7 @@ import { Button } from '../ui/button';
 import { Card } from '../ui/card';
 import { StatusPill, PlanCardBadge } from './EABadges';
 import { projectId } from '../../utils/supabase/info';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 
 interface InviteRedemptionProps {
   token: string;

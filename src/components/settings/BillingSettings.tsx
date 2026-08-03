@@ -7,7 +7,7 @@ import { useAuth } from '../../context/AuthContext';
 import { PLAN_LIMITS, PLAN_PRICING, ADDON_PRICING, PRICE_IDS } from '../../utils/pricing';
 import { ComingSoonModal } from '../marketing/ComingSoonModal';
 import { isBillingEnabled } from '../../utils/feature-flags';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { projectId, publicAnonKey } from '../../utils/supabase/info';
 
 interface BillingSettingsProps {
