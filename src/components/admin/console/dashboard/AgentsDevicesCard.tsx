@@ -5,6 +5,7 @@ import { Server, Download, ExternalLink } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../../ui/select';
 import { useAuth } from '../../../../context/AuthContext';
 import { projectId } from '../../../../utils/supabase/info';
+import { downloadAgentInstaller } from '../../../../utils/agentDownload';
 import { toast } from 'sonner';
 
 export const AgentsDevicesCard = () => {
@@ -34,22 +35,16 @@ export const AgentsDevicesCard = () => {
   const handleDownload = async () => {
     if (!session?.access_token) return;
     setLoading(true);
-    try {
-      const res = await fetch(`https://${projectId}.supabase.co/functions/v1/make-server-55e8c5b2/agents/download/${platform}`, {
-        headers: { 'Authorization': `Bearer ${session.access_token}` }
-      });
-      const data = await res.json();
-      if (data.success) {
-        window.open(data.download_url, '_blank');
-        toast.success(`Generated ${platform} installer`);
-      } else {
-        toast.error('Failed to generate installer');
-      }
-    } catch (e) {
-      toast.error('Error generating installer');
-    } finally {
-      setLoading(false);
+    const result = await downloadAgentInstaller(
+      platform as 'windows' | 'macos' | 'linux',
+      session.access_token
+    );
+    if (result.success) {
+      toast.success(`Downloaded ${platform} installer`, { description: result.filename });
+    } else {
+      toast.error(result.error || 'Failed to generate installer');
     }
+    setLoading(false);
   };
 
   return (

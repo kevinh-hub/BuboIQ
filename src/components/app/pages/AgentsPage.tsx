@@ -12,8 +12,6 @@ import {
   Clock,
   Shield,
   Terminal,
-  Copy,
-  Check,
   Play,
   Eye,
   MoreHorizontal
@@ -32,6 +30,7 @@ import { LoadingSpinner, ErrorState, EmptyState } from '../../SystemStates';
 import { toast } from 'sonner';
 import { projectId, publicAnonKey } from '../../../utils/supabase/info';
 import { supabase } from '../../../utils/supabase/client';
+import { downloadAgentInstaller } from '../../../utils/agentDownload';
 
 interface Agent {
   id: string;
@@ -61,9 +60,6 @@ export const AgentsPage: React.FC<AgentsPageProps> = ({ user, onNavigate }) => {
   const [showDownloadModal, setShowDownloadModal] = useState(false);
   const [showTestModal, setShowTestModal] = useState(false);
   const [selectedPlatform, setSelectedPlatform] = useState<'windows' | 'macos' | 'linux'>('windows');
-  const [downloadUrl, setDownloadUrl] = useState<string>('');
-  const [registrationKey, setRegistrationKey] = useState<string>('');
-  const [copiedKey, setCopiedKey] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
 
@@ -85,7 +81,7 @@ export const AgentsPage: React.FC<AgentsPageProps> = ({ user, onNavigate }) => {
       }
 
       const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-55e8c5b2/agents`,
+        `https://${projectId}.supabase.co/functions/v1/make-server-55e8c5b2/devices`,
         {
           headers: {
             'Authorization': `Bearer ${session.access_token}`
@@ -93,17 +89,41 @@ export const AgentsPage: React.FC<AgentsPageProps> = ({ user, onNavigate }) => {
         }
       );
 
-      console.log(`[AgentsPage] GET /agents - Response: ${response.status} ${response.statusText}`);
+      console.log(`[AgentsPage] GET /devices - Response: ${response.status} ${response.statusText}`);
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-        console.error('[AgentsPage] Failed to load agents:', errorData);
+        console.error('[AgentsPage] Failed to load devices:', errorData);
         throw new Error(errorData.error || 'Failed to load agents');
       }
 
       const data = await response.json();
-      console.log('[AgentsPage] Loaded agents:', data.agents?.length || 0);
-      setAgents(data.agents || []);
+      const mapped: Agent[] = (data.devices || []).map((device: any) => {
+        const os = (device.os || '').toLowerCase();
+        const platform: Agent['platform'] = os.includes('mac') || os.includes('darwin')
+          ? 'macos'
+          : os.includes('linux')
+            ? 'linux'
+            : 'windows';
+
+        return {
+          id: device.id,
+          hostname: device.hostname,
+          platform,
+          platform_version: device.os_version || device.os || '',
+          agent_version: device.agent_version || 'unknown',
+          org_id: device.organization_id,
+          ip_address: device.ip_address,
+          mac_address: device.mac_address,
+          capabilities: [],
+          status: device.status === 'online' ? 'active' : 'offline',
+          registered_at: device.created_at,
+          last_checkin: device.last_seen,
+          metadata: device.metadata,
+        };
+      });
+      console.log('[AgentsPage] Loaded devices:', mapped.length);
+      setAgents(mapped);
     } catch (error) {
       console.error('Failed to load agents:', error);
       setError('Failed to load agents');
@@ -113,41 +133,21 @@ export const AgentsPage: React.FC<AgentsPageProps> = ({ user, onNavigate }) => {
   };
 
   const handleDownloadAgent = async (platform: 'windows' | 'macos' | 'linux') => {
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      if (!session) {
-        toast.error('Not authenticated');
-        return;
-      }
-
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-55e8c5b2/agents/download/${platform}`,
-        {
-          headers: {
-            'Authorization': `Bearer ${session.access_token}`
-          }
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error('Failed to generate download link');
-      }
-
-      const data = await response.json();
-      
-      setDownloadUrl(data.download_url);
-      setRegistrationKey(data.config.registration_key);
-      setSelectedPlatform(platform);
-      setShowDownloadModal(true);
-
-      toast.success('Download link generated', {
-        description: `Ready to install ${platform} agent`
-      });
-    } catch (error) {
-      console.error('Download error:', error);
-      toast.error('Failed to generate download link');
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      toast.error('Not authenticated');
+      return;
     }
+
+    const result = await downloadAgentInstaller(platform, session.access_token);
+    if (!result.success) {
+      toast.error(result.error || 'Failed to generate download link');
+      return;
+    }
+
+    setSelectedPlatform(platform);
+    setShowDownloadModal(true);
+    toast.success('Installer downloaded', { description: result.filename });
   };
 
   const handleCreateTestAgent = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -233,13 +233,6 @@ export const AgentsPage: React.FC<AgentsPageProps> = ({ user, onNavigate }) => {
       console.error('Delete agent error:', error);
       toast.error('Failed to delete agent');
     }
-  };
-
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedKey(true);
-    setTimeout(() => setCopiedKey(false), 2000);
-    toast.success('Copied to clipboard');
   };
 
   const getStatusColor = (status: string) => {
@@ -601,38 +594,11 @@ export const AgentsPage: React.FC<AgentsPageProps> = ({ user, onNavigate }) => {
               Download BuboIQ Agent - {selectedPlatform}
             </DialogTitle>
             <DialogDescription className="text-mist-gray">
-              Install the agent on your computers to enable monitoring and management
+              Your installer has downloaded. The agent will register itself automatically.
             </DialogDescription>
           </DialogHeader>
           
           <div className="space-y-4">
-            <div className="p-4 bg-nocturne-indigo/50 border border-slate-gray/30 rounded-lg">
-              <div className="flex items-center justify-between mb-2">
-                <Label className="text-white">Registration Key</Label>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => copyToClipboard(registrationKey)}
-                  className="text-electric-blue hover:bg-electric-blue/10"
-                >
-                  {copiedKey ? (
-                    <>
-                      <Check className="w-4 h-4 mr-2" />
-                      Copied
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="w-4 h-4 mr-2" />
-                      Copy
-                    </>
-                  )}
-                </Button>
-              </div>
-              <code className="text-sm text-iq-neon-green break-all">
-                {registrationKey}
-              </code>
-            </div>
-
             <Tabs defaultValue="windows" className="w-full">
               <TabsList className="grid w-full grid-cols-3">
                 <TabsTrigger value="windows">Windows</TabsTrigger>
@@ -646,7 +612,7 @@ export const AgentsPage: React.FC<AgentsPageProps> = ({ user, onNavigate }) => {
                   <ol className="list-decimal list-inside space-y-2 text-mist-gray text-sm">
                     <li>Download the installer using the button below</li>
                     <li>Run the installer as Administrator</li>
-                    <li>The agent will automatically register using the key above</li>
+                    <li>The agent will register itself automatically</li>
                     <li>Verify the agent appears in the dashboard</li>
                   </ol>
                 </div>
@@ -688,10 +654,10 @@ export const AgentsPage: React.FC<AgentsPageProps> = ({ user, onNavigate }) => {
             </Button>
             <Button
               className="bubo-btn-neon-primary"
-              onClick={() => window.open(downloadUrl, '_blank')}
+              onClick={() => handleDownloadAgent(selectedPlatform)}
             >
               <Download className="w-4 h-4 mr-2" />
-              Download Installer
+              Download Again
             </Button>
           </DialogFooter>
         </DialogContent>
