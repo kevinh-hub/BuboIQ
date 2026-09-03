@@ -28,7 +28,8 @@ import {
   Zap,
   Settings,
   History,
-  Info
+  Info,
+  Plus
 } from 'lucide-react';
 import { Card } from '../../ui/card';
 import { Button } from '../../ui/button';
